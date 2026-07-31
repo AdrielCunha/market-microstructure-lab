@@ -1,6 +1,7 @@
-# Python travado na mesma versão da máquina de desenvolvimento. O simulador
-# precisa dar o mesmo número aqui e lá — resultado que muda porque o runtime
-# mudou não é medição.
+# Minor travado, patch livre. O simulador precisa dar o mesmo número aqui e na
+# máquina de desenvolvimento — resultado que muda porque o runtime mudou não é
+# medição —, mas travar o patch também congelaria correção de segurança numa
+# máquina que fica meses ligada. Dev roda 3.14.2; a imagem acompanha o 3.14.x.
 FROM python:3.14-slim
 
 # Camada de dependências separada do código: alterar uma linha de Python não
