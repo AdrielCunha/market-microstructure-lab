@@ -21,6 +21,7 @@ import time
 import duckdb
 
 from engine.ledger import Ledger
+from reports import nav
 
 REFRESH_S = 20
 MAX_EXECUCOES = 120       # a tabela precisa caber na tela e continuar legível
@@ -197,17 +198,16 @@ ESTILO = """
               border:1px solid #33404f; color:#93a0ae; }
   .vazio { color:#646d79; padding:10px 0; }
   a { color:#6fa8c7; }
-"""
+""" + nav.ESTILO_BARRA
 
 
 def _cabecalho(estrategia: str, motores: list[str]) -> str:
     abas = "".join(
         f'<a class="{"on" if m == estrategia else ""}" href="/ordens?e={m}">'
         f'{html.escape(m.replace("maker_", ""))}</a>' for m in motores)
-    return f"""<h1>pmlab — ordem a ordem</h1>
-<div class="sub">atualiza a cada {REFRESH_S}s ·
-  <a href="/">indice</a> · <a href="/paper">resumo</a> ·
-  <a href="/coleta">coleta</a> · <a href="/markout">markout</a></div>
+    return f"""{nav.barra("/ordens")}
+<h1>pmlab — ordem a ordem</h1>
+<div class="sub">atualiza a cada {REFRESH_S}s · uma aba por motor</div>
 <div class="abas">{abas}</div>"""
 
 

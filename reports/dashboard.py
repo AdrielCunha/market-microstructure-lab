@@ -17,6 +17,8 @@ from typing import Any
 
 import duckdb
 
+from reports import nav
+
 REFRESH_S = 10
 
 
@@ -178,7 +180,9 @@ def render(s: dict) -> str:
   td, th {{ padding:5px 10px; border-bottom:1px solid #1d232c; text-align:left; }}
   tr.warn td {{ color:#e0a458; }}
   .cols {{ display:flex; gap:40px; flex-wrap:wrap; }}
+  {nav.ESTILO_BARRA}
 </style></head><body>
+{nav.barra("/coleta")}
 <h1>pmlab — coleta ao vivo</h1>
 <div class="sub">atualiza sozinho a cada {REFRESH_S}s · Fase 0, nenhuma ordem enviada</div>
 

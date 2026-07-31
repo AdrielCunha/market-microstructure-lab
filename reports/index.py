@@ -7,6 +7,8 @@ segundo parecer confiável quando o primeiro está quebrado.
 
 from __future__ import annotations
 
+from reports import nav
+
 PAINEIS = [
     ("/coleta", "Coleta", "O instrumento esta funcionando?",
      "Saude do coletor: fluxo do WebSocket, buffer de escrita, silencio de "
@@ -79,7 +81,9 @@ def pagina() -> str:
   .pergunta {{ color:#cbd3dc; font-size:12px; margin-bottom:8px; font-style:italic; }}
   .desc {{ color:#8b95a1; font-size:12px; line-height:1.5; }}
   .nota {{ color:#5f6874; font-size:11px; margin-top:10px; }}
+  {nav.ESTILO_BARRA}
 </style></head><body>
+{nav.barra("/")}
 <h1>pmlab — laboratorio Polymarket</h1>
 <div class="sub">Fase 0 (coleta) + Fase 1 (paper trading)</div>
 

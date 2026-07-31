@@ -15,8 +15,13 @@ import time
 import duckdb
 
 from analysis.markout import HORIZONTES_S, _consulta
+from reports import carteira, nav
 
 REFRESH_S = 15
+
+# Motor que representa a realidade: regra honesta (`negocio`, so conta negocio
+# impresso) na latencia que de fato temos depois da mudanca para Londres.
+REFERENCIA = "maker_negocio_lat15"
 
 # Explicação de cada métrica, mostrada junto do valor. O texto é parte do
 # produto: sem ele, "caixa alto" já foi confundido com "lucro" uma vez.
@@ -84,7 +89,19 @@ def coletar(con: duckdb.DuckDBPyConnection, motores: dict) -> dict:
                     "meio_spread": meio or 0.0, "rebate": reb or 0.0}
         except Exception:
             pass
-    return {"markout": markout, "motores": motores}
+
+    # Valor de saída por motor. Precisa do livro atual, então roda aqui, com a
+    # conexão em mãos — e nunca derruba o painel se um motor falhar.
+    avaliacoes = {}
+    for nome, m in motores.items():
+        led = m.get("ledger_obj")
+        if led is None:
+            continue
+        try:
+            avaliacoes[nome] = carteira.avaliar(con, led)
+        except Exception:
+            pass
+    return {"markout": markout, "motores": motores, "avaliacoes": avaliacoes}
 
 
 def _card(chave: str, valor: str, cor: str = "", extra: str = "") -> str:
@@ -187,7 +204,75 @@ def _bloco_motor(nome: str, mot: dict, mk: dict) -> str:
             f'<div class="grid">{cards}</div>')
 
 
+def _bloco_valor_real(avaliacoes: dict) -> str:
+    """O número que responde 'quanto eu teria de verdade'.
+
+    Destaca o motor de referência — a regra honesta na latência que realmente
+    temos — porque somar os motores seria errado: são a MESMA estratégia
+    simulada de seis jeitos, cada uma com os seus $1.000 de mentira, e não seis
+    carteiras que se somam.
+    """
+    if not avaliacoes:
+        return ""
+    nome = REFERENCIA if REFERENCIA in avaliacoes else sorted(avaliacoes)[0]
+    a = avaliacoes[nome]
+    lucro = a["valor_de_saida"] - a["capital_inicial"]
+    pct = 100 * lucro / a["capital_inicial"] if a["capital_inicial"] else 0.0
+    sem_reb = a["sem_rebate"] - a["capital_inicial"]
+
+    aviso_preco = ""
+    if a["sem_preco"]:
+        aviso_preco = (f'<div class="explica">{a["sem_preco"]} posicao(oes) sem '
+                       'cotacao no livro agora: avaliadas pelo custo, nunca por '
+                       'preco inventado.</div>')
+
+    return f"""
+<h2>Quanto teriamos DE VERDADE</h2>
+<div class="sub">Motor de referencia: <b>{html.escape(nome)}</b> — a regra
+  honesta, na latencia que realmente temos.</div>
+<div class="veredito {_sinal(lucro)}">
+  ${_n(a["valor_de_saida"])} &nbsp;·&nbsp; {"lucro" if lucro > 0 else "prejuizo"}
+  de ${_n(lucro)} ({pct:+.2f}%)</div>
+<div class="grid">
+  <div class="card"><div class="rotulo">Se desmontasse tudo agora</div>
+    <div class="valor {_sinal(lucro)}">${_n(a["valor_de_saida"])}</div>
+    <div class="explica">Realizado + rebates &minus; taxas + posicao aberta
+      avaliada ao preco de SAIR (bid se comprado, ask se vendido), ja descontada
+      a taxa de taker para sair. <b>E o dinheiro que entraria na conta.</b></div>
+    {aviso_preco}</div>
+  <div class="card"><div class="rotulo">Patrimonio contabil</div>
+    <div class="valor">${_n(a["patrimonio"])}</div>
+    <div class="explica">A mesma carteira avaliada pelo mid. E a convencao
+      correta, mas otimista: ninguem sai no mid.</div></div>
+  <div class="card alerta"><div class="rotulo">Custo de otimismo</div>
+    <div class="valor">${_n(a["otimismo"])}</div>
+    <div class="explica">A diferenca entre as duas contas acima: o spread que
+      se paga para sair, mais a taxa de taker (~3,4% do notional, medido).</div></div>
+  <div class="card"><div class="rotulo">Sem contar rebate</div>
+    <div class="valor {_sinal(sem_reb)}">${_n(sem_reb)}</div>
+    <div class="explica">O mesmo resultado jogando fora TODO o rebate. A formula
+      da taxa nunca foi confirmada (fee_rate_bps veio 0 em 957 de 957 execucoes),
+      entao este e o piso do piso.</div></div>
+  <div class="card"><div class="rotulo">Taxas ja pagas</div>
+    <div class="valor">${_n(a["taxas_pagas"])}</div>
+    <div class="explica">Taxa de taker das saidas forcadas. Ja esta descontada
+      nos numeros acima.</div></div>
+  <div class="card"><div class="rotulo">Custo para zerar</div>
+    <div class="valor">${_n(a["custo_para_sair"])}</div>
+    <div class="explica">Taxa que ainda pagariamos para desmontar as
+      {a["posicoes"]} posicao(oes) abertas.</div></div>
+</div>
+<div class="aviso">
+  <b>Por que nao somar os seis motores.</b> Eles nao sao seis carteiras: sao a
+  mesma estrategia simulada com regras e latencias diferentes, cada uma com os
+  seus $1.000 de mentira, sobre o mesmo fluxo de mercado. Somar daria um numero
+  sem significado nenhum. O que vale e o motor de referencia acima; os outros
+  servem para comparar.
+</div>"""
+
+
 def render(s: dict) -> str:
+    bloco_real = _bloco_valor_real(s.get("avaliacoes", {}))
     blocos = "".join(_bloco_motor(n, m, s["markout"].get(n, {}))
                      for n, m in sorted(s["motores"].items()))
     if not blocos:
@@ -248,12 +333,14 @@ def render(s: dict) -> str:
   th {{ color:#8b95a1; font-weight:normal; }}
   td.verde {{ color:#6ecf9a; }} td.vermelho {{ color:#e07a7a; }}
   a {{ color:#6fa8c7; }}
+  {nav.ESTILO_BARRA}
 </style></head><body>
+{nav.barra("/paper")}
 
 <h1>pmlab — paper trading (Fase 1)</h1>
-<div class="sub">atualiza a cada {REFRESH_S}s ·
-  <a href="/">indice</a> · <a href="/coleta">coleta</a> ·
-  <a href="/markout">markout</a> · <a href="/gate0">gate0</a></div>
+<div class="sub">atualiza a cada {REFRESH_S}s</div>
+
+{bloco_real}
 
 <div class="aviso">
   <b>Dinheiro de mentira.</b> Nenhuma ordem real e enviada; nao existe chave

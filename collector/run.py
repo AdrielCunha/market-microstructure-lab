@@ -30,7 +30,15 @@ from analysis import markout, nichos
 from engine.paper import REGRAS, PaperEngine
 from engine.settlement import liquidar_resolvidos
 from engine.strategy import MakerSimples
-from reports import dashboard, gate0, index, ordens, paper_dash, verify
+from reports import dashboard, gate0, index, nav, ordens, paper_dash, verify
+
+# Relatórios que produzem texto puro. Todos passam pelo mesmo embrulho HTML.
+TEXTUAIS = {
+    "/gate0": gate0.main,
+    "/verify": verify.main,
+    "/nichos": nichos.main,
+    "/markout": markout.main,
+}
 
 
 async def servidor_dashboard(store: Store, books: BookCollector,
@@ -73,6 +81,10 @@ async def servidor_dashboard(store: Store, books: BookCollector,
                     if st.ultimo_topo is not None and st.ultimo_topo.mid is not None}
             mot.ledger.marcar(mids)
             out[mot.nome] = {
+                # O objeto vivo, para o painel calcular o valor de SAÍDA — o que
+                # entraria na conta se desmontássemos tudo agora. Isso precisa
+                # dos preços do livro, então não dá para vir do `resumo`.
+                "ledger_obj": mot.ledger,
                 "ledger": mot.ledger.resumo(mids),
                 "metricas": {
                     "fills": mot.m.fills, "compras": mot.m.fills_compra,
@@ -127,18 +139,13 @@ async def servidor_dashboard(store: Store, books: BookCollector,
 
         tipo = "text/html; charset=utf-8"
         try:
-            if rota == "/gate0":
-                corpo = await asyncio.to_thread(_relatorio, gate0.main)
-                tipo = "text/plain; charset=utf-8"
-            elif rota == "/verify":
-                corpo = await asyncio.to_thread(_relatorio, verify.main)
-                tipo = "text/plain; charset=utf-8"
-            elif rota == "/nichos":
-                corpo = await asyncio.to_thread(_relatorio, nichos.main)
-                tipo = "text/plain; charset=utf-8"
-            elif rota == "/markout":
-                corpo = await asyncio.to_thread(_relatorio, markout.main)
-                tipo = "text/plain; charset=utf-8"
+            # Relatórios de texto vão embrulhados em HTML com a barra de
+            # navegação: em texto puro eram becos sem saída — para sair, só o
+            # botão voltar do navegador.
+            if rota in TEXTUAIS:
+                fn = TEXTUAIS[rota]
+                texto = await asyncio.to_thread(_relatorio, fn)
+                corpo = nav.pagina_texto(rota.strip("/"), texto, rota)
             elif rota == "/paper":
                 estado = estado_paper()
                 corpo = await asyncio.to_thread(_com_lock, paper_dash.pagina,
