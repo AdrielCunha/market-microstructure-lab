@@ -103,9 +103,45 @@ class TestCiclos:
         assert c["encerrou"] == "saida forcada"
 
 
+class TestListaDeMotores:
+    """A aba do motor que importa nao pode sumir por falta de execucao.
+
+    A regra `negocio` so conta negocio impresso, e o feed publica poucos. Nas
+    primeiras horas ela fica com zero execucoes. Listar apenas quem tem linha em
+    `paper_fills` a escondia — e a pagina caia calada no `cruzamento`, o motor
+    cujo resultado nao vale.
+    """
+
+    def test_motor_ligado_sem_execucao_aparece(self, con):
+        con.execute("INSERT INTO paper_sessao VALUES (?, 0, 0)", [EST])
+        con.execute("INSERT INTO paper_sessao VALUES "
+                    "('maker_cruzamento_lat15', 0, 0)")
+        grava(con, 1000, "BUY", 0.40, 100, token="t1")  # so o cruzamento executou
+        con.execute("UPDATE paper_fills SET strategy = 'maker_cruzamento_lat15'")
+
+        motores = ordens.motores_disponiveis(con)
+        assert EST in motores, "motor sem execucao sumiu da lista"
+        assert "maker_cruzamento_lat15" in motores
+
+    def test_padrao_e_respeitado_mesmo_sem_execucao(self, con):
+        con.execute("INSERT INTO paper_sessao VALUES (?, 0, 0)", [EST])
+        con.execute("INSERT INTO paper_sessao VALUES "
+                    "('maker_cruzamento_lat0', 0, 0)")
+        html = ordens.pagina(con)
+        assert f'class="on" href="/ordens?e={EST}"' in html, \
+            "a pagina caiu em outro motor em vez de mostrar o padrao vazio"
+
+    def test_aba_vazia_explica_em_vez_de_parecer_quebrada(self, con):
+        con.execute("INSERT INTO paper_sessao VALUES (?, 0, 0)", [EST])
+        html = ordens.pagina(con, EST)
+        assert "negocio IMPRESSO" in html or "negocio</b> so conta" in html
+
+
 class TestPaginaNaoQuebra:
-    def test_sem_execucao_nenhuma(self, con):
-        assert "Nenhuma execucao" in ordens.pagina(con)
+    def test_sem_motor_nenhum(self, con):
+        """Banco virgem: nenhum motor registrado ainda. E diferente de 'motor
+        ligado sem execucao', que agora tem tela propria."""
+        assert "Nenhum motor ligado" in ordens.pagina(con)
 
     def test_banco_sem_paper_sessao(self):
         """Analise de arquivo antigo nao pode derrubar a tela."""

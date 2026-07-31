@@ -52,8 +52,25 @@ def _duracao(ms: float) -> str:
 
 
 def motores_disponiveis(con: duckdb.DuckDBPyConnection) -> list[str]:
-    return [r[0] for r in con.execute(
-        "SELECT DISTINCT strategy FROM paper_fills ORDER BY 1").fetchall()]
+    """Todos os motores LIGADOS, mesmo os que ainda não executaram nada.
+
+    Listar só quem tem linha em `paper_fills` esconde exatamente o motor que
+    mais importa: a regra `negocio` só conta negócio impresso, e o feed publica
+    poucos (~9 para cada ~1.300 mudanças de preço). Nas primeiras horas ela
+    fica com zero execuções — e sumia da tela, que então caía calada no
+    `cruzamento`, o motor cujo resultado não vale.
+
+    `paper_sessao` tem uma linha por motor, criada no arranque, então serve de
+    censo de quem está ligado.
+    """
+    nomes: set[str] = set()
+    for sql in ("SELECT DISTINCT strategy FROM paper_sessao",
+                "SELECT DISTINCT strategy FROM paper_fills"):
+        try:
+            nomes.update(r[0] for r in con.execute(sql).fetchall() if r[0])
+        except duckdb.Error:
+            pass          # banco antigo pode não ter uma das tabelas
+    return sorted(nomes)
 
 
 def carregar(con: duckdb.DuckDBPyConnection, estrategia: str) -> dict:
@@ -216,9 +233,19 @@ def pagina(con: duckdb.DuckDBPyConnection, estrategia: str | None = None) -> str
     if not motores:
         return ("<!doctype html><meta charset=utf-8>"
                 "<body style='background:#0e1116;color:#d7dde5;font-family:monospace;"
-                "padding:24px'>Nenhuma execucao ainda. Deixe o coletor rodar.</body>")
+                "padding:24px'>Nenhum motor ligado ainda. Deixe o coletor rodar.</body>")
     if estrategia not in motores:
         estrategia = PADRAO if PADRAO in motores else motores[0]
+
+    # Motor ligado e ainda sem execução é estado normal, não erro — e precisa
+    # ser dito. Antes, uma aba vazia parecia painel quebrado.
+    vazio = ""
+    if estrategia.startswith("maker_negocio"):
+        vazio = ('<div class="aviso">A regra <b>negocio</b> so conta negocio '
+                 'IMPRESSO no feed, e o Polymarket publica poucos (~9 para cada '
+                 '~1.300 mudancas de preco). Ficar horas com zero execucoes aqui '
+                 'e esperado — ela conta de menos de proposito, e por isso e a '
+                 'regra em que se pode confiar.</div>')
 
     d = carregar(con, estrategia)
     led = d["ledger"]
@@ -318,6 +345,7 @@ def pagina(con: duckdb.DuckDBPyConnection, estrategia: str | None = None) -> str
 <meta http-equiv="refresh" content="{REFRESH_S}">
 <title>pmlab — ordens</title><style>{ESTILO}</style></head><body>
 {_cabecalho(estrategia, motores)}
+{vazio if not d["execucoes"] else ""}
 
 <div class="aviso">
   <b>Dinheiro de mentira.</b> Nenhuma ordem real e enviada.<br><br>
