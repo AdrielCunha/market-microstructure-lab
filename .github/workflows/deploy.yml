@@ -25,8 +25,21 @@ jobs:
           CHAVE: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$CHAVE" > ~/.ssh/id_deploy
+          # `tr -d '\r'` nao e paranoia: copiar a chave com `type` no PowerShell
+          # entrega fim de linha do Windows, e o OpenSSH recusa com um
+          # "error in libcrypto" que nao diz nada sobre a causa real.
+          printf '%s\n' "$CHAVE" | tr -d '\r' > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
+
+          # Falhar aqui, com mensagem, e muito melhor que falhar tres passos
+          # adiante dentro do rsync com "Permission denied (publickey)".
+          if ! ssh-keygen -y -f ~/.ssh/id_deploy >/dev/null 2>&1; then
+            echo "::error::O secret SSH_PRIVATE_KEY nao e uma chave valida."
+            echo "::error::Copie o arquivo INTEIRO, com as linhas BEGIN e END."
+            echo "::error::No Windows: Get-Content ~/.ssh/pmlab_deploy -Raw | Set-Clipboard"
+            exit 1
+          fi
+          echo "chave ok: $(ssh-keygen -lf ~/.ssh/id_deploy | awk '{print $2}')"
           # Fixar a chave do host evita aceitar qualquer servidor no meio do
           # caminho. Se a droplet for recriada, este passo falha de propósito.
           ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
