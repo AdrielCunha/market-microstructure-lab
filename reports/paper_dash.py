@@ -48,7 +48,10 @@ GLOSSARIO = {
     "caixa_livre": ("Caixa livre",
         "O que sobra do capital para abrir posicao nova."),
     "drawdown_max": ("Pior queda",
-        "Maior tombo do patrimonio desde o topo. Mede o susto, nao o resultado."),
+        "Maior tombo do patrimonio desde o topo. Mede o susto, nao o resultado. "
+        "Conta a partir do ULTIMO REINICIO: o pico historico nao e reconstruido "
+        "na restauracao, entao um deploy zera esta medida (so ela — posicao e "
+        "resultado sobrevivem)."),
     "fechamentos": ("Operacoes fechadas",
         "Quantas vezes uma posicao foi zerada. Poucos fechamentos com muitas "
         "execucoes = estoque acumulando, nao market making."),
@@ -93,15 +96,19 @@ def coletar(con: duckdb.DuckDBPyConnection, motores: dict) -> dict:
     # Valor de saída por motor. Precisa do livro atual, então roda aqui, com a
     # conexão em mãos — e nunca derruba o painel se um motor falhar.
     avaliacoes = {}
+    falhas = []
     for nome, m in motores.items():
         led = m.get("ledger_obj")
         if led is None:
             continue
         try:
             avaliacoes[nome] = carteira.avaliar(con, led)
-        except Exception:
-            pass
-    return {"markout": markout, "motores": motores, "avaliacoes": avaliacoes}
+        except Exception as exc:
+            # Engolir isso em silêncio some com o bloco do valor real na tela, e
+            # quem olha conclui "nao foi implementado" em vez de "quebrou".
+            falhas.append(f"{nome}: {type(exc).__name__}: {exc}")
+    return {"markout": markout, "motores": motores,
+            "avaliacoes": avaliacoes, "falhas": falhas}
 
 
 def _card(chave: str, valor: str, cor: str = "", extra: str = "") -> str:
@@ -273,6 +280,9 @@ def _bloco_valor_real(avaliacoes: dict) -> str:
 
 def render(s: dict) -> str:
     bloco_real = _bloco_valor_real(s.get("avaliacoes", {}))
+    for f in s.get("falhas", []):
+        bloco_real += (f'<div class="perigo">O calculo do valor real falhou — '
+                       f'{html.escape(f)}</div>')
     blocos = "".join(_bloco_motor(n, m, s["markout"].get(n, {}))
                      for n, m in sorted(s["motores"].items()))
     if not blocos:

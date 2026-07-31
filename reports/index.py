@@ -37,9 +37,9 @@ PAINEIS = [
     ("/nichos", "Nichos", "Onde um operador LENTO consegue jogar?",
      "Cruza liga x faixa de preco e mede a VIDA DO TOPO DE LIVRO: quanto tempo "
      "o melhor preco sobrevive antes de alguem repricar. Se o topo troca mais "
-     "rapido que os nossos 230ms, a cotacao nasce defasada e so e executada "
-     "quando o preco ja virou contra. E o filtro que separa nicho jogavel de "
-     "corrida perdida.", "gerado sob demanda"),
+     "rapido que a NOSSA latencia (lida do config.toml), a cotacao nasce "
+     "defasada e so e executada quando o preco ja virou contra. E o filtro que "
+     "separa nicho jogavel de corrida perdida.", "gerado sob demanda"),
     ("/markout", "Markout", "Quanto custa a selecao adversa?",
      "Detalhe por horizonte (5s, 30s, 60s, 300s) de onde o preco foi DEPOIS "
      "de cada execucao. Perda que some rapido e microestrutura; perda que "

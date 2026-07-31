@@ -21,6 +21,10 @@ from core.db import connect
 # `cruzamento` conta cancelamento como execução, então distorce toda contagem.
 REGRA_HONESTA = "negocio"
 
+# Só a sessão corrente. `paper_fills` acumula rodadas antigas — algumas com
+# bugs já corrigidos, como a venda a descoberto de graça e a realimentação de
+# capital. Misturar aquilo com a série nova produz uma anatomia de estoque que
+# não descreve estratégia nenhuma. O painel `/ordens` usa o mesmo corte.
 FILLS = """
 SELECT f.ts_local, f.strategy, f.regra, f.token_id, f.side, f.price, f.size,
        f.notional_usd, f.posicao_depois,
@@ -28,6 +32,8 @@ SELECT f.ts_local, f.strategy, f.regra, f.token_id, f.side, f.price, f.size,
        m.end_date
 FROM paper_fills f
 LEFT JOIN markets m USING (token_id)
+LEFT JOIN paper_sessao s ON s.strategy = f.strategy
+WHERE f.ts_local >= COALESCE(s.desde_ts, 0)
 ORDER BY f.strategy, f.token_id, f.ts_local
 """
 
@@ -35,7 +41,16 @@ ORDER BY f.strategy, f.token_id, f.ts_local
 def carregar(con=None) -> pl.DataFrame:
     own = con is None
     con = con or connect(read_only=True)
-    df = con.execute(FILLS).pl()
+    try:
+        df = con.execute(FILLS).pl()
+    except Exception:
+        # Banco anterior a `paper_sessao` (arquivo antigo aberto para análise).
+        # Mostra a série inteira, que é o comportamento antigo — melhor que
+        # recusar a rodar.
+        print("  (banco sem paper_sessao: analisando a serie inteira)\n")
+        df = con.execute(FILLS.replace(
+            "LEFT JOIN paper_sessao s ON s.strategy = f.strategy", ""
+        ).replace("WHERE f.ts_local >= COALESCE(s.desde_ts, 0)", "")).pl()
     if own:
         con.close()
     return df

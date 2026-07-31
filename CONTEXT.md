@@ -314,6 +314,27 @@ rigor**:
     capital consigo mesmo. `capital_disponivel(excluir=token_id)` resolve — a
     cotação nova SUBSTITUI a antiga.
 
+14. **Falha silenciosa escondia o painel.** `paper_dash.coletar` engolia a
+    exceção de `carteira.avaliar` com `except Exception: pass`. O bloco do valor
+    real simplesmente sumia da tela, e quem olhasse concluiria "não foi
+    implementado" em vez de "quebrou". Agora a falha aparece em vermelho, com o
+    tipo do erro.
+
+13. **Constante de latência cravada no código.** `analysis/nichos.py` tinha
+    `LATENCIA_MS = 230`. A operação mudou para Londres e passou a rodar a 15ms,
+    mas o módulo continuou respondendo *"onde um operador de 230ms consegue
+    jogar"*. Medido na série histórica (1,47M mudanças de topo, 46,3h): a 230ms
+    sobrevivem ~52% das cotações, **a 15ms sobrevivem 92,8%**. O ranking de
+    nichos apontava para o lugar errado por um fator de quase dois.
+
+    A primeira tentativa de conserto errou também: deduzir a latência real como
+    o **maior** valor de `latencias_ms` devolvia **170** — a máquina antiga do
+    Brasil, que fica na lista só para comparação. Por isso existe agora a chave
+    explícita `latencia_real_ms`, e `tests/test_config_latencia.py` trava a
+    classe inteira: a constante não pode voltar ao código, a latência real tem
+    de estar entre as simuladas, e o motor de referência do painel tem de
+    corresponder a ela.
+
 12. **Medir latência num endpoint cacheado.** A primeira versão de
     `analysis/latencia.py` usava `/simplified-markets` e reportou **50ms** —
     quatro vezes melhor que a realidade. Era `cf-cache-status=HIT` num PoP do
@@ -401,9 +422,15 @@ Agora `EstadoToken` separa `cotacao` (viva no livro) de `pendente` (decidida,
 ainda em trânsito). A cotação só passa a valer em `ts + latencia_ms`, e enquanto
 isso é a ANTIGA que fica exposta e é executada.
 
-`config.toml` roda uma matriz `latencias_ms = [0, 230]` × 2 regras = 4 motores
-sobre o mesmo fluxo. **A diferença entre a coluna lat0 e a lat230 é o preço de
-estar a 230ms do exchange** — medido, não estimado.
+`config.toml` roda uma matriz `latencias_ms = [0, 15, 170]` × 2 regras = 6
+motores sobre o mesmo fluxo: teto impossível, Londres real, e a máquina antiga
+do Brasil mantida para comparação. **A diferença entre as colunas é o preço da
+distância** — medido, não estimado, e sobre o MESMO tick de mercado, o que é
+mais limpo do que comparar duas máquinas.
+
+`latencia_real_ms = 15` é uma chave separada e explícita: qual das latências
+descreve a máquina de verdade **não se adivinha**. Deduzir isso da lista já
+produziu resposta errada (ver bug 13).
 
 Isso expôs mais um furo na trava de capital: o compromisso só era contado quando
 a cotação ficava viva, então centenas de ordens viajavam ao mesmo tempo sem

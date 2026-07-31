@@ -22,8 +22,26 @@ import polars as pl
 from analysis.fees import taker_fee
 from core.db import connect
 
-# Latência medida desta máquina até o CLOB (ida e volta).
-LATENCIA_MS = 230
+# Latência real da máquina onde a estratégia roda, lida do `config.toml`.
+#
+# Isto JÁ FOI uma constante `230` cravada no código, e virou bug de verdade: a
+# operação mudou para Londres e passou a rodar a 15ms, mas este módulo continuou
+# respondendo "onde um operador de 230ms consegue jogar". A 230ms sobrevivem 52%
+# das cotações; a 15ms, 94%. O ranking de nichos apontava para o lugar errado.
+#
+# Vem de `latencia_real_ms`, uma chave EXPLÍCITA. Tentar deduzir da lista
+# `latencias_ms` já errou: a lista é `[0, 15, 170]`, e escolher o maior devolvia
+# 170 — a máquina antiga do Brasil, mantida ali só para comparação. Qual das
+# latências é a real não se adivinha; se declara.
+def _latencia_configurada() -> int:
+    try:
+        from core import config
+        return int(config.load()["paper"]["latencia_real_ms"])
+    except Exception:
+        return 15
+
+
+LATENCIA_MS = _latencia_configurada()
 
 BASE = """
 SELECT b.token_id, b.ts_local, b.spread, b.mid,
@@ -101,7 +119,7 @@ def receita_e_score(df: pl.DataFrame, horas: float) -> pl.DataFrame:
     São TRÊS dimensões, e faltar qualquer uma zera o nicho:
 
     1. **Receita** — spread + rebate. Sem isso não há o que capturar.
-    2. **Sobrevivência** — o topo precisa durar mais que os nossos 230ms, senão
+    2. **Sobrevivência** — o topo precisa durar mais que a nossa latência, senão
        a cotação nasce defasada e só é executada quando o preço virou contra.
     3. **Fluxo** — precisa haver movimento. Um livro parado com spread largo
        não paga nada: ninguém vem negociar contra a nossa ordem.
@@ -137,7 +155,7 @@ def main(con=None) -> None:
 
     horas = (df["ts_local"].max() - df["ts_local"].min()) / 3_600_000
     print("=" * 78)
-    print("ONDE UM OPERADOR LENTO (230ms) CONSEGUE FAZER MERCADO")
+    print(f"ONDE UM OPERADOR A {LATENCIA_MS}ms CONSEGUE FAZER MERCADO")
     print("=" * 78)
     print(f"Base: {len(df):,} mudancas de topo, {df['token_id'].n_unique()} tokens, "
           f"{horas:.1f}h de janela\n")
@@ -146,8 +164,10 @@ def main(con=None) -> None:
     q = df["vida_ms"]
     print(f"  mediana geral      : {q.median():,.0f} ms")
     print(f"  p25 / p75          : {q.quantile(0.25):,.0f} / {q.quantile(0.75):,.0f} ms")
-    print(f"  sobrevive aos 230ms: {(df['vida_ms'] > LATENCIA_MS).mean()*100:.1f}% das cotacoes")
-    print(f"  sobrevive a 1,15s  : {(df['vida_ms'] > 5*LATENCIA_MS).mean()*100:.1f}%")
+    print(f"  sobrevive a {LATENCIA_MS}ms{'':<5}: "
+          f"{(df['vida_ms'] > LATENCIA_MS).mean()*100:.1f}% das cotacoes")
+    print(f"  sobrevive a {5*LATENCIA_MS}ms{'':<4}: "
+          f"{(df['vida_ms'] > 5*LATENCIA_MS).mean()*100:.1f}%")
     print("\n  Leitura: a fracao que NAO sobrevive e onde a nossa cotacao nasce")
     print("  defasada. Ali so somos executados quando o preco ja virou contra.")
 
