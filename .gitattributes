@@ -1,0 +1,8 @@
+# O desenvolvimento é no Windows e a execução é em Linux, dentro de container.
+# Sem isto, arquivo salvo com CRLF chega no container com \r no fim da linha —
+# o que quebra qualquer script de shell de um jeito difícil de enxergar.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.duckdb binary

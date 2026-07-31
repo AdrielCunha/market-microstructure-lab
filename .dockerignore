@@ -1,0 +1,16 @@
+# O banco fica em volume montado do host, nunca dentro da imagem: são centenas
+# de MB e ele precisa sobreviver à troca de container.
+data/
+*.duckdb
+*.duckdb.wal
+
+.git/
+.github/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.env
+*.pem
+*.key

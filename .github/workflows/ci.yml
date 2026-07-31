@@ -1,0 +1,28 @@
+name: testes
+
+on:
+  push:
+  pull_request:
+  workflow_call:      # o deploy chama isto antes de subir qualquer coisa
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      # Os testes travam as regras que impedem o simulador de mentir a favor:
+      # venda a descoberto de graça, ordem defasada tratada como taker, estoque
+      # que nunca desmonta. Cada um deles já foi um bug de verdade.
+      - run: python -m pytest tests -q
+
+      # A imagem tem de construir antes de o deploy tentar construir na droplet
+      # de 1 vCPU. Falhar aqui custa segundos; falhar lá derruba a coleta.
+      - run: docker build -t pmlab:ci .

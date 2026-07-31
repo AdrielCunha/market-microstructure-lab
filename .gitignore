@@ -1,0 +1,25 @@
+# Banco de coleta: centenas de MB e cresce por dia. Nunca vai para o git.
+data/
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp/
+
+# Segredos. A Fase 2 vai ter chave de carteira; o lugar dela nunca é aqui.
+.env
+*.pem
+*.key
+secrets.toml
+config.local.toml
+
+# Ferramental de agente que vive no diretório mas não é código do projeto.
+.agents/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.DS_Store

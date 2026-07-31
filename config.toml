@@ -1,0 +1,121 @@
+# Configuração do laboratório. Fase 0 é somente leitura — nenhuma chave privada aqui.
+
+[db]
+path = "data/polymarket.duckdb"
+
+[api]
+gamma = "https://gamma-api.polymarket.com"
+clob = "https://clob.polymarket.com"
+data = "https://data-api.polymarket.com"
+ws_market = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
+timeout_s = 20.0
+
+[catalog]
+# Quais mercados entram na coleta. Filtra o universo (~50k mercados) para o que
+# é observável e negociável de verdade.
+refresh_minutes = 30
+max_tokens = 400              # limite de assinaturas no WebSocket
+min_liquidity_usd = 5000.0
+max_days_to_resolution = 14   # mercados longos travam capital; fora do escopo da Fase 0
+# Um evento entra com TODAS as pernas ou não entra — somar um subconjunto dos
+# resultados de um evento negative-risk fabrica arbitragem que não existe.
+# Eventos gigantes (128 candidatos, etc.) consumiriam o orçamento inteiro.
+max_outcomes_per_event = 12
+max_events_scan = 600
+# Vazio = todas. Ex.: ["Sports", "Politics"]
+categories = []
+
+[books]
+tokens_per_socket = 150
+reconnect_min_s = 1.0
+reconnect_max_s = 60.0
+# Snapshot REST periódico para auditar a série derivada do WebSocket.
+# Se o coletor passar este tempo sem processar evento, o watchdog encerra o
+# processo. Travar em silencio numa coleta de dias e pior que cair.
+watchdog_s = 300
+audit_interval_s = 900
+audit_sample = 40
+# price_change é ~97% do volume de eventos. Guardar o payload cru dele custa
+# GBs/dia e a linha derivada em book_top já tem o que a análise usa.
+# Ligar apenas quando estiver depurando o parser.
+log_raw_price_change = false
+# A maioria dos price_change mexe em níveis fundos e deixa o topo igual. Toda a
+# análise da Fase 0 olha só o topo, então repetição é descartada.
+dedupe_unchanged_top = true
+flush_rows = 5000
+flush_interval_s = 3.0
+
+[wallets]
+# Carteiras a espionar. swisstony é o caso do plano; o resto vem do leaderboard.
+poll_interval_s = 3.0
+top_n_from_leaderboard = 30
+# Janelas aceitas pelo lb-api: 1d, 7d, 30d, all.
+leaderboard_window = "30d"
+# Workers que buscam o livro de um token assim que um trade novo aparece nele.
+probe_workers = 4
+seed = [
+    "0x204f72f35326db932158cba6adff0b9a1da95e14",  # swisstony
+]
+
+[fees]
+# Modelo de custo. Confirmar contra trades reais on-chain antes da Fase 2.
+# Polymarket cobra taker fee numa curva que colapsa nos extremos: rate * p * (1-p).
+taker_fee_rate = 0.02
+maker_fee_rate = 0.0
+gas_usd_per_tx = 0.02         # Polygon; medir de verdade na Fase 2
+# Custo de oportunidade do capital travado até a resolução (anualizado).
+capital_annual_rate = 0.14    # ~CDI
+
+[paper]
+# Fase 1 — paper trading. NENHUMA ordem real é enviada; não há chave privada.
+# As duas regras (cruzamento/negocio) rodam em paralelo sobre o mesmo fluxo:
+# `cruzamento` conta execucoes demais, `negocio` conta de menos.
+ligado = true
+# Capital de partida da simulacao, em dolares de mentira.
+capital_inicial_usd = 1000.0
+size_cotas = 100              # tamanho de cada cotação
+spread_minimo_c = 1.0         # abaixo disso não há o que capturar
+preco_min = 0.10              # nos extremos o custo em % do capital explode
+preco_max = 0.90
+posicao_maxima_cotas = 500    # trava de estoque por token
+# Desloca as cotacoes conforme o estoque, para forcar o fechamento da posicao.
+# O lado da SAIDA fica agressivo e o lado da ENTRADA se afasta.
+skew_maximo_c = 2.0
+# --- Gestao de estoque ---
+# Medido em 30h: de ~140 execucoes, so 6 a 9 viraram ida-e-volta. O resto ficou
+# na mao por 309 minutos de mediana ate o mercado resolver e virar $1 ou $0.
+# Resultado: +$1,90 capturado no livro contra -$238,29 na resolucao.
+#
+# A quantos minutos da resolucao parar de ABRIR posicao (so cota o lado que
+# reduz estoque).
+minutos_sem_abrir = 30.0
+# A quantos minutos da resolucao atravessar o spread e zerar. Custa o spread —
+# custo conhecido e pequeno no lugar de um risco de 68c por cota.
+minutos_saida_forcada = 10.0
+# Piso para ABRIR posicao vendida. Vender a 26c e arriscar 74c para ganhar 26c:
+# precisa acertar 74% so para empatar, e o medido a 230ms foi 50%.
+preco_min_venda = 0.15
+# Latencias simuladas, em ms. Rodar varias lado a lado, sobre o MESMO fluxo de
+# mercado, mede o preco da distancia sem estimativa nenhuma.
+#
+#    0  teto fisicamente impossivel, so referencia
+#   15  DigitalOcean LON1 (medido: `python -m analysis.latencia`)
+#  170  maquina de casa no Brasil — a linha de base de todas as rodadas antigas
+#
+# Rodando NA VPS de Londres, use [0, 15, 170]. Rodando no Brasil, [0, 170].
+# Cada latencia vira 2 motores (uma por regra), entao 3 latencias = 6 motores.
+# Se a CPU da droplet apertar, corte o 0 — ele e referencia, nao medicao.
+latencias_ms = [0, 170]
+# A cada quantos minutos checar se algum mercado resolveu.
+liquidacao_minutos = 10
+exposicao_maxima_usd = 5000.0 # trava de exposição por token
+
+[dashboard]
+# Servido pelo próprio coletor: o DuckDB não deixa um segundo processo abrir o
+# banco enquanto a coleta escreve, nem em modo leitura.
+porta = 8787
+
+[gate0]
+# Critérios de aprovação do Gate 0 (ver plano).
+min_edge_over_cost_ratio = 2.0
+min_survival_seconds = 2.0

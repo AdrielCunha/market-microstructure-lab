@@ -1,0 +1,20 @@
+[project]
+name = "pmlab"
+version = "0.1.0"
+description = "Laboratório de medição e paper trading para Polymarket — Fase 0: instrumentação"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.28",
+    "websockets>=14",
+    "duckdb>=1.1",
+    "polars>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

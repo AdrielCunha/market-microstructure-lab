@@ -1,0 +1,9 @@
+# Versões travadas: o simulador precisa dar o mesmo número hoje e daqui a um
+# mês. Resultado que muda porque uma dependência mudou não é medição.
+httpx==0.28.1
+websockets==16.0
+duckdb==1.5.5
+polars==1.43.1
+pyarrow==25.0.0
+pytz==2026.3.post1
+pytest==9.1.1

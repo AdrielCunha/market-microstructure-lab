@@ -1,0 +1,31 @@
+services:
+  coletor:
+    build: .
+    container_name: pmlab
+    # `unless-stopped` fecha o ciclo com o watchdog interno: quando o coletor
+    # congela, o watchdog chama os._exit(1), o container morre e o Docker sobe
+    # de novo. Antes disso, congelar significava ficar congelado até alguém
+    # perceber — e uma vez ficou 2,7h assim.
+    restart: unless-stopped
+
+    volumes:
+      # O banco vive no HOST. Trocar a imagem não pode levar a coleta junto.
+      - ./data:/app/data
+      # Config fora da imagem: mudar latência ou capital não exige rebuild.
+      - ./config.toml:/app/config.toml:ro
+
+    # SÓ localhost. O painel não tem autenticação nenhuma — publicar na internet
+    # seria expor o estado da operação para qualquer um. Para ver de casa, use
+    # túnel SSH:  ssh -L 8787:127.0.0.1:8787 root@IP
+    ports:
+      - "127.0.0.1:8787:8787"
+
+    # A droplet tem 2 GB. Sem teto, um vazamento derruba o SSH junto e aí não
+    # dá nem para entrar e diagnosticar.
+    mem_limit: 1500m
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
