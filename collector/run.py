@@ -30,7 +30,7 @@ from analysis import markout, nichos
 from engine.paper import REGRAS, PaperEngine
 from engine.settlement import liquidar_resolvidos
 from engine.strategy import MakerSimples
-from reports import dashboard, gate0, index, paper_dash, verify
+from reports import dashboard, gate0, index, ordens, paper_dash, verify
 
 
 async def servidor_dashboard(store: Store, books: BookCollector,
@@ -112,9 +112,18 @@ async def servidor_dashboard(store: Store, books: BookCollector,
             writer.close()
             return
         try:
-            rota = pedido.split(b" ")[1].decode().split("?")[0]
+            alvo = pedido.split(b" ")[1].decode()
+            rota, _, consulta = alvo.partition("?")
         except (IndexError, UnicodeDecodeError):
-            rota = "/"
+            rota, consulta = "/", ""
+        # Só um parâmetro é usado (`e`, qual motor mostrar). Um dicionário
+        # completo de query string aqui seria mais superfície do que o painel
+        # precisa.
+        escolhido = None
+        for par in consulta.split("&"):
+            chave, _, valor = par.partition("=")
+            if chave == "e" and valor:
+                escolhido = valor[:80]
 
         tipo = "text/html; charset=utf-8"
         try:
@@ -134,6 +143,9 @@ async def servidor_dashboard(store: Store, books: BookCollector,
                 estado = estado_paper()
                 corpo = await asyncio.to_thread(_com_lock, paper_dash.pagina,
                                                 leitura, estado)
+            elif rota == "/ordens":
+                corpo = await asyncio.to_thread(_com_lock, ordens.pagina,
+                                                leitura, escolhido)
             elif rota == "/coleta":
                 rt = runtime()
                 corpo = await asyncio.to_thread(_com_lock, dashboard.pagina,

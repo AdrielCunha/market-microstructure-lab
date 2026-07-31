@@ -18,6 +18,12 @@ PAINEIS = [
      "paralelo. O numero que decide e o EDGE LIQUIDO: meio spread + rebate "
      "menos o markout. Se ele for negativo nas duas regras, market making "
      "morreu.", "atualiza sozinho a cada 15s"),
+    ("/ordens", "Ordem a ordem", "O que exatamente o robo fez?",
+     "A visao detalhada: cada execucao com hora, mercado, preco, cotas e quanto "
+     "AQUELA operacao colocou ou tirou do bolso. Mais as posicoes abertas "
+     "marcadas a preco de agora, e os ciclos que voltaram ao zero — que e onde "
+     "market making aparece de verdade. Uma aba por motor.",
+     "atualiza sozinho a cada 20s"),
     ("/gate0", "Veredito Gate 0", "Alguma tese sobreviveu ao custo real?",
      "Relatorio em texto com os tres criterios: arbitragem negative-risk, "
      "market making e copy trading. Cada um com PASS, FAIL ou INCONCLUSIVO e "
