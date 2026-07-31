@@ -595,6 +595,30 @@ class TestTravaDeCapital:
         assert m._capital_da_cotacao("t", Cotacao(bid=None, ask=0.42, size=100)) \
             == pytest.approx(0.0)
 
+    def test_lucro_de_papel_nao_vira_poder_de_fogo(self, store):
+        """Sem teto existe realimentacao: lucro aumenta o caixa, caixa maior
+        deixa cotar mais, mais cotacoes produzem mais lucro.
+
+        Observado em producao: $35.309 sobre $1.000 em 3 horas, 12.944
+        execucoes em 400 tokens, porque a trava de capital tinha parado de
+        travar.
+        """
+        m = PaperEngine(store, MakerSimples(size=100), "cruzamento",
+                        capital_inicial=100.0, latencia_ms=0)
+        antes = m.capital_disponivel()
+        # Um lucro enorme, como o que a regra `cruzamento` fabricava.
+        m.ledger.realizado += 50_000.0
+        assert m.capital_disponivel() == pytest.approx(antes), \
+            "lucro de papel nao pode aumentar o que da para operar"
+
+    def test_prejuizo_reduz_o_que_da_para_operar(self, store):
+        """O teto e assimetrico de proposito: perda encolhe a capacidade."""
+        m = PaperEngine(store, MakerSimples(size=100), "cruzamento",
+                        capital_inicial=1000.0, latencia_ms=0)
+        antes = m.capital_disponivel()
+        m.ledger.realizado -= 400.0
+        assert m.capital_disponivel() == pytest.approx(antes - 400.0)
+
     def test_recotar_nao_conta_o_mesmo_token_duas_vezes(self, store):
         m = PaperEngine(store, MakerSimples(size=100), "cruzamento",
                         capital_inicial=100.0, latencia_ms=0)

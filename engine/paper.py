@@ -406,9 +406,29 @@ class PaperEngine:
         recotado: a cotação nova SUBSTITUI a antiga, não se soma a ela. Sem
         isso, recotar o mesmo token disputa capital consigo mesmo e a estratégia
         trava sozinha depois da primeira cotação.
+
+        ## Por que o teto no capital inicial
+
+        Lucro de papel NÃO vira poder de fogo. Sem esse teto existe uma
+        realimentação: resultado positivo aumenta o caixa livre, caixa livre
+        maior deixa cotar mais tokens, mais tokens produzem mais resultado. Cada
+        volta amplifica a anterior.
+
+        Observado em produção com a regra `cruzamento`, que já conta execuções
+        demais: **$35.309 de "lucro" sobre $1.000 de capital em 3 horas**, com
+        12.944 execuções em 400 tokens. A trava de capital tinha parado de
+        travar, e o motor cotava em todo lugar ao mesmo tempo.
+
+        O teto é assimétrico de propósito: **prejuízo reduz o que dá para
+        operar, lucro não aumenta.** É o comportamento certo para um aparelho de
+        medição — queremos saber quanto de vantagem existe por dólar de capital,
+        e não simular capitalização composta, que introduz realimentação e
+        torna a medida instável.
         """
         comprometido = sum(v for k, v in self._comprometido.items() if k != excluir)
-        return self.ledger.caixa_livre({}) - comprometido
+        livre = min(self.ledger.caixa_livre({}),
+                    self.ledger.capital_inicial - self.ledger.capital_travado())
+        return livre - comprometido
 
     def _executar(self, token_id: str, ts_local: int, side: str, price: float,
                   size: float, topo: Topo, agressiva: bool = False) -> None:
