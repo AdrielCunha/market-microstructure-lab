@@ -14,9 +14,17 @@ services:
       # Config fora da imagem: mudar latência ou capital não exige rebuild.
       - ./config.toml:/app/config.toml:ro
 
-    # SÓ localhost. O painel não tem autenticação nenhuma — publicar na internet
-    # seria expor o estado da operação para qualquer um. Para ver de casa, use
-    # túnel SSH:  ssh -L 8787:127.0.0.1:8787 root@IP
+    environment:
+      # Dentro do container o painel PRECISA escutar em todas as interfaces: o
+      # Docker encaminha para o IP do container, e servidor preso ao loopback
+      # interno não recebe nada — o container fica `healthy` (a checagem roda
+      # por dentro) e recusa conexão por fora. Quem limita o alcance é a
+      # publicação abaixo, não este endereço.
+      PMLAB_DASHBOARD_HOST: "0.0.0.0"
+
+    # SÓ o localhost do host. O painel não tem autenticação nenhuma — publicar
+    # na internet seria expor o estado da operação para qualquer um. Para ver de
+    # casa, use túnel SSH:  ssh -L 8787:127.0.0.1:8787 root@IP
     ports:
       - "127.0.0.1:8787:8787"
 

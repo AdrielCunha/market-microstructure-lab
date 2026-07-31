@@ -154,8 +154,18 @@ async def servidor_dashboard(store: Store, books: BookCollector,
         finally:
             writer.close()
 
-    servidor = await asyncio.start_server(handler, "127.0.0.1", porta)
-    store.log("run", "info", "dashboard no ar", {"porta": porta})
+    # Fora de container, 127.0.0.1: o painel não tem autenticação nenhuma e não
+    # pode aparecer na rede local.
+    #
+    # DENTRO do container é obrigatório escutar em 0.0.0.0 — e isso NÃO expõe
+    # nada: o Docker encaminha para o IP do container, e um servidor preso ao
+    # loopback interno simplesmente não recebe (foi o que aconteceu: `healthy`
+    # por dentro, conexão recusada por fora). Quem limita o alcance é a
+    # publicação da porta em `127.0.0.1:8787` no compose, mais o firewall.
+    endereco = os.environ.get("PMLAB_DASHBOARD_HOST", "127.0.0.1")
+    servidor = await asyncio.start_server(handler, endereco, porta)
+    store.log("run", "info", "dashboard no ar",
+              {"porta": porta, "endereco": endereco})
     print(f"\n  PAINEL: http://127.0.0.1:{porta}")
     print("    /coleta   saude do coletor      /paper    paper trading")
     print("    /gate0    veredito              /verify   integridade")
