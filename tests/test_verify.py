@@ -15,10 +15,22 @@ import io
 import duckdb
 import pytest
 
-from core.db import SCHEMA
+from core.db import SCHEMA, now_ms
 from reports import verify
 
 MINUTO = 60_000
+
+
+def base_ms() -> int:
+    """Ponto de partida DENTRO da janela de análise.
+
+    As consultas passaram a olhar só as últimas horas (`core/janela.py`), porque
+    varrer o banco inteiro segurava o lock e travava o coletor. Um `base` fixo em
+    2023, como havia aqui, cai fora da janela e faz toda checagem rodar sobre
+    zero linha — os testes passariam a validar o caminho de "sem dado" achando
+    que validavam a checagem.
+    """
+    return now_ms() - 20 * 3_600_000
 
 
 @pytest.fixture
@@ -28,15 +40,24 @@ def con():
     return c
 
 
-def povoar(con, minutos: list[int], base: int = 1_700_000_000_000) -> None:
+def povoar(con, minutos: list[int], base: int | None = None) -> None:
     """Grava uma observação de topo em cada minuto pedido."""
+    base = base_ms() if base is None else base
     con.executemany(
         "INSERT INTO book_top VALUES (?,?,?,?,?,?,?,?,?,?)",
         [("t1", base + m * MINUTO, base + m * MINUTO,
           0.47, 10.0, 0.49, 10.0, 0.48, 0.02, "ws") for m in minutos])
 
 
-def inicios(con, n: int, base: int = 1_700_000_000_000) -> None:
+def topo_avulso(con, token: str, bid, bid_sz, ask, ask_sz, mid, spread) -> None:
+    """Uma linha solta, também dentro da janela."""
+    t = base_ms()
+    con.execute("INSERT INTO book_top VALUES (?,?,?,?,?,?,?,?,?,'ws')",
+                [token, t, t, bid, bid_sz, ask, ask_sz, mid, spread])
+
+
+def inicios(con, n: int, base: int | None = None) -> None:
+    base = base_ms() if base is None else base
     con.executemany(
         "INSERT INTO collector_log VALUES (?,?,?,?,?)",
         [(base + i, "run", "info", "dashboard no ar", None) for i in range(n)])
@@ -94,15 +115,13 @@ class TestContinuidade:
 class TestOutrasChecagens:
     def test_spread_negativo_e_pego(self, con):
         povoar(con, [0, 1])
-        con.execute("INSERT INTO book_top VALUES "
-                    "('t2',1,1,0.5,1.0,0.4,1.0,0.45,-0.1,'ws')")
+        topo_avulso(con, "t2", 0.5, 1.0, 0.4, 1.0, 0.45, -0.1)
         saida = rodar(con)
         assert "[FALHA] nenhum spread negativo" in saida
 
     def test_preco_fora_do_intervalo_e_pego(self, con):
         povoar(con, [0, 1])
-        con.execute("INSERT INTO book_top VALUES "
-                    "('t3',1,1,1.4,1.0,1.6,1.0,1.5,0.2,'ws')")
+        topo_avulso(con, "t3", 1.4, 1.0, 1.6, 1.0, 1.5, 0.2)
         saida = rodar(con)
         assert "[FALHA] precos dentro de [0,1]" in saida
 
@@ -110,7 +129,7 @@ class TestOutrasChecagens:
         """Reconexao de WebSocket e operacao normal; o sintoma e a frequencia."""
         povoar(con, list(range(120)))
         inicios(con, 1)
-        con.execute("INSERT INTO collector_log VALUES "
-                    "(1,'books','warn','ws0 caiu, reconectando',NULL)")
+        con.execute("INSERT INTO collector_log VALUES (?,?,?,?,?)",
+                    [base_ms(), "books", "warn", "ws0 caiu, reconectando", None])
         saida = rodar(con)
         assert "[FALHA] avisos em ritmo normal" not in saida

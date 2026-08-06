@@ -9,6 +9,7 @@ checagens existem para pegar isso.
 
 from __future__ import annotations
 
+from core import janela as _jan
 from core.db import connect
 
 TOL_CENTAVOS = 1.0        # divergência aceitável entre WS e REST, em centavos
@@ -28,19 +29,43 @@ def main(con=None) -> None:
     print("=" * 70)
     print("VERIFICACAO DE INTEGRIDADE DA COLETA")
     print("=" * 70)
+    print(f"Janela: ultimas {_jan.horas():.0f}h "
+          f"(a serie completa continua no banco)")
     resultados = []
+
+    # Janela vazia NAO e defeito — e coletor parado, ou banco de arquivo aberto
+    # para analise. Sem esta porta, todas as checagens abaixo rodavam sobre zero
+    # linha e cuspiam FALHA: "sem pares comparaveis" e, pior, "43 avisos em 0.0h
+    # = 43.0/h", que e divisao por janela zero virando alarme.
+    #
+    # Alarme falso e pior que nenhuma verificacao: treina quem le a ignorar o
+    # vermelho. Este projeto ja corrigiu esse mesmo erro uma vez (bug 9).
+    n_janela = con.execute(
+        f"SELECT count(*) FROM book_top WHERE source='ws' {_jan.clausula()}"
+    ).fetchone()[0]
+    if not n_janela:
+        print(f"\n  SEM DADO na janela de {_jan.horas():.0f}h.")
+        print("  Isto nao e falha: ou o coletor esta parado, ou este banco e")
+        print("  arquivo antigo. Nada a verificar.")
+        total = con.execute("SELECT count(*) FROM book_top").fetchone()[0]
+        print(f"  (o banco tem {total:,} linhas de topo no historico completo)")
+        if own:
+            con.close()
+        return
 
     # 1. A série derivada do WebSocket bate com o livro real?
     # Para cada snapshot REST de auditoria, comparamos com a última observação
     # do WS logo antes. Divergência sistemática = parser quebrado.
     print("\n1) WebSocket x snapshot REST (o parser esta correto?)")
-    cmp = con.execute("""
+    cmp = con.execute(f"""
         SELECT count(*) AS n,
                round(median(abs(r.best_ask - w.best_ask)) * 100, 3) AS dif_ask_c,
                round(median(abs(r.best_bid - w.best_bid)) * 100, 3) AS dif_bid_c,
                round(max(abs(r.best_ask - w.best_ask)) * 100, 3)    AS pior_c
-        FROM (SELECT * FROM book_top WHERE source = 'rest_audit') r
-        ASOF JOIN (SELECT * FROM book_top WHERE source = 'ws') w
+        FROM (SELECT * FROM book_top WHERE source = 'rest_audit'
+               {_jan.clausula()}) r
+        ASOF JOIN (SELECT * FROM book_top WHERE source = 'ws'
+                   {_jan.clausula()}) w
              ON r.token_id = w.token_id AND r.ts_local >= w.ts_local
         WHERE r.best_ask IS NOT NULL AND w.best_ask IS NOT NULL
     """).fetchone()
@@ -55,12 +80,13 @@ def main(con=None) -> None:
 
     # 2. Spread negativo é impossível num livro válido.
     print("\n2) Sanidade do topo de livro")
-    neg = con.execute("SELECT count(*) FROM book_top WHERE spread < 0").fetchone()[0]
+    neg = con.execute(f"SELECT count(*) FROM book_top WHERE spread < 0 {_jan.clausula()}").fetchone()[0]
     resultados.append(check("nenhum spread negativo", neg == 0, f"{neg} violacoes"))
 
-    fora = con.execute("""
+    fora = con.execute(f"""
         SELECT count(*) FROM book_top
-        WHERE best_bid < 0 OR best_bid > 1 OR best_ask < 0 OR best_ask > 1
+        WHERE (best_bid < 0 OR best_bid > 1 OR best_ask < 0 OR best_ask > 1)
+          {_jan.clausula()}
     """).fetchone()[0]
     resultados.append(check("precos dentro de [0,1]", fora == 0, f"{fora} violacoes"))
 
@@ -75,20 +101,24 @@ def main(con=None) -> None:
     # religado sobra um buraco legítimo. Por isso comparamos as lacunas com o
     # número de reinícios registrados no log.
     print("\n3) Continuidade da serie")
-    cont = con.execute("""
+    cont = con.execute(f"""
         WITH minutos AS (
             -- CAST explícito: em DuckDB `/` é divisão real e produziria
             -- minutos fracionários, que poluem a contagem e a mensagem.
             SELECT DISTINCT CAST(ts_local / 60000 AS BIGINT) AS m
-            FROM book_top WHERE source = 'ws'
+            FROM book_top WHERE source = 'ws' {_jan.clausula()}
         ), faixa AS (
             SELECT min(m) AS a, max(m) AS b, count(*) AS com_dado FROM minutos
         )
         SELECT (b - a + 1) AS total, com_dado, (b - a + 1) - com_dado AS sem_dado
         FROM faixa
     """).fetchone()
-    reinicios = con.execute("""
-        SELECT count(*) FROM collector_log WHERE message = 'dashboard no ar'
+    # O log tambem entra na janela. Contar reinicios e avisos da serie INTEIRA
+    # contra minutos de 48h produz taxa inflada — 43 avisos historicos sobre uma
+    # janela curta viravam "43/h" e reprovavam uma coleta saudavel.
+    reinicios = con.execute(f"""
+        SELECT count(*) FROM collector_log
+        WHERE message = 'dashboard no ar' {_jan.clausula()}
     """).fetchone()[0]
     janela = float(cont[0] or 0)
     sem_dado = int(cont[2] or 0)
@@ -121,16 +151,26 @@ def main(con=None) -> None:
     # frequência. Exigir zero produzia alarme falso a cada queda isolada.
     print("\n5) Log do coletor")
     warns = con.execute(
-        "SELECT count(*) FROM collector_log WHERE level <> 'info'").fetchone()[0]
+        f"SELECT count(*) FROM collector_log WHERE level <> 'info' "
+        f"{_jan.clausula()}").fetchone()[0]
     horas = (janela or 0) / 60.0
-    por_hora = warns / horas if horas else float(warns)
-    resultados.append(check(
-        "avisos em ritmo normal", por_hora <= MAX_AVISOS_POR_HORA,
-        f"{warns} avisos em {horas:.1f}h = {por_hora:.1f}/h "
-        f"(limite {MAX_AVISOS_POR_HORA}/h)"))
+    # Janela curta demais nao permite falar de TAXA: 2 avisos em 3 minutos
+    # viram "40/h" e reprovam uma coleta que acabou de subir.
+    if horas < 0.5:
+        resultados.append(check(
+            "avisos em ritmo normal", True,
+            f"{warns} avisos em {horas*60:.0f}min — janela curta demais "
+            f"para calcular taxa"))
+    else:
+        por_hora = warns / horas
+        resultados.append(check(
+            "avisos em ritmo normal", por_hora <= MAX_AVISOS_POR_HORA,
+            f"{warns} avisos em {horas:.1f}h = {por_hora:.1f}/h "
+            f"(limite {MAX_AVISOS_POR_HORA}/h)"))
     if warns:
-        for msg, n in con.execute("""
-            SELECT message, count(*) FROM collector_log WHERE level <> 'info'
+        for msg, n in con.execute(f"""
+            SELECT message, count(*) FROM collector_log
+            WHERE level <> 'info' {_jan.clausula()}
             GROUP BY 1 ORDER BY 2 DESC LIMIT 5
         """).fetchall():
             print(f"            - {msg}: {n}x")

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import polars as pl
 
+from core import janela
 from core.db import connect
 
 HORIZONTES_S = (5, 30, 60, 300)
@@ -45,9 +46,10 @@ def _consulta(horizonte_s: int) -> str:
            b.mid AS mid_depois,
            CASE WHEN f.side = 'BUY' THEN (b.mid - f.price) * f.size
                 ELSE (f.price - b.mid) * f.size END AS markout
-    FROM paper_fills f
+    FROM (SELECT * FROM paper_fills {janela.clausula('ts_local', 'WHERE')}) f
     ASOF JOIN (SELECT token_id, ts_local, mid FROM book_top
-               WHERE mid IS NOT NULL AND source IN ('ws','copy_probe','rest_audit')) b
+               WHERE mid IS NOT NULL AND source IN ('ws','copy_probe','rest_audit')
+                 {janela.clausula()}) b
          ON f.token_id = b.token_id AND b.ts_local >= f.ts_local + {ms}
     WHERE b.ts_local - f.ts_local <= {ms * 3}
       -- Markout mede seleção adversa, que só existe em ordem PARADA no livro.

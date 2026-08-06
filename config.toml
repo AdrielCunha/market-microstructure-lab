@@ -120,6 +120,19 @@ latencia_real_ms = 15
 liquidacao_minutos = 10
 exposicao_maxima_usd = 5000.0 # trava de exposição por token
 
+[analise]
+# Ate onde para tras as consultas PESADAS olham. A serie inteira continua
+# gravada; isto so limita quem disputa o lock do banco com o coletor.
+#
+# Medido com 1,47 GB acumulados: sem limite, /gate0 levava 38s e /nichos nem
+# respondia, e enquanto rodavam o coletor PARAVA de processar evento. Uma
+# consulta passou de 300s e o watchdog matou o processo.
+janela_horas = 48.0
+# De quantos em quantos minutos recalcular os relatorios pesados em segundo
+# plano. As paginas passam a servir o resultado pronto, entao abrir o painel
+# nunca mais toca no banco.
+precompute_minutos = 10.0
+
 [dashboard]
 # Servido pelo próprio coletor: o DuckDB não deixa um segundo processo abrir o
 # banco enquanto a coleta escreve, nem em modo leitura.

@@ -20,6 +20,7 @@ from __future__ import annotations
 import polars as pl
 
 from analysis.fees import taker_fee
+from core import janela
 from core.db import connect
 
 # Latência real da máquina onde a estratégia roda, lida do `config.toml`.
@@ -43,7 +44,10 @@ def _latencia_configurada() -> int:
 
 LATENCIA_MS = _latencia_configurada()
 
-BASE = """
+def _base() -> str:
+    # A janela é montada na hora: o corte é relativo ao agora, e uma constante
+    # de módulo congelaria no import (o coletor fica dias de pé).
+    return f"""
 SELECT b.token_id, b.ts_local, b.spread, b.mid,
        m.category, m.liquidity_usd, m.fee_rate, m.fee_rebate_rate,
        date_diff('hour', now(), m.end_date) AS horas_ate_resolver
@@ -51,6 +55,7 @@ FROM book_top b
 JOIN markets m USING (token_id)
 WHERE b.source = 'ws' AND b.spread IS NOT NULL AND b.mid IS NOT NULL
   AND b.spread >= 0 AND b.mid BETWEEN 0.02 AND 0.98
+  {janela.clausula('b.ts_local')}
 ORDER BY b.token_id, b.ts_local
 """
 
@@ -73,7 +78,7 @@ def preparar(con=None) -> pl.DataFrame:
     """
     own = con is None
     con = con or connect(read_only=True)
-    df = con.execute(BASE).pl()
+    df = con.execute(_base()).pl()
     if own:
         con.close()
     if df.is_empty():

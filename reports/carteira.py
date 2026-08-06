@@ -27,6 +27,7 @@ from __future__ import annotations
 import duckdb
 
 from analysis.fees import taker_fee
+from core import janela
 
 # Regime de taxa do Polymarket quando o catálogo não diz. Esportes cobram
 # `rate=0.05`; é o caso da maioria dos mercados que coletamos.
@@ -47,6 +48,7 @@ def _precos_de_saida(con: duckdb.DuckDBPyConnection,
         FROM book_top b
         LEFT JOIN markets m USING (token_id)
         WHERE b.token_id IN ({marcas})
+          {janela.clausula('b.ts_local')}
         GROUP BY b.token_id
     """, list(tokens)).fetchall()
     return {r[0]: (r[1], r[2], r[3] or TAXA_PADRAO) for r in linhas}

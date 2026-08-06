@@ -11,7 +11,7 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from core.db import SCHEMA
+from core.db import SCHEMA, now_ms
 from engine.ledger import Ledger
 from reports import carteira, index, nav, paper_dash
 
@@ -21,8 +21,13 @@ def con():
     c = duckdb.connect(":memory:")
     c.execute(SCHEMA)
     c.execute("INSERT INTO markets (token_id, fee_rate) VALUES ('t1', 0.05)")
-    c.execute("INSERT INTO book_top VALUES "
-              "('t1',1,1,0.38,10,0.42,10,0.40,0.04,'ws')")
+    # Dentro da janela de análise: as consultas pesadas passaram a olhar só as
+    # últimas horas (`core/janela.py`), porque varrer o banco inteiro segurava o
+    # lock e travava o coletor. Um timestamp fixo em 1970 cai fora e a posição
+    # apareceria como "sem cotacao".
+    t = now_ms() - 3_600_000
+    c.execute("INSERT INTO book_top VALUES (?,?,?,?,?,?,?,?,?,'ws')",
+              ["t1", t, t, 0.38, 10, 0.42, 10, 0.40, 0.04])
     return c
 
 
@@ -65,6 +70,19 @@ class TestValorDeSaida:
         assert a["sem_preco"] == 1
         assert a["nao_realizado_saida"] == pytest.approx(0.0), \
             "sem cotacao, avalia pelo custo — nunca por preco inventado"
+
+    def test_cotacao_velha_demais_conta_como_sem_preco(self, con):
+        """Preco de dias atras nao serve para dizer quanto sai hoje. Fora da
+        janela, a posicao e avaliada pelo custo e sinalizada."""
+        antigo = now_ms() - 30 * 24 * 3_600_000
+        con.execute("INSERT INTO markets (token_id, fee_rate) VALUES ('velho', 0.05)")
+        con.execute("INSERT INTO book_top VALUES (?,?,?,?,?,?,?,?,?,'ws')",
+                    ["velho", antigo, antigo, 0.10, 10, 0.90, 10, 0.50, 0.80])
+        led = Ledger(capital_inicial=1000.0)
+        led.aplicar("velho", "BUY", 0.50, 100)
+        a = carteira.avaliar(con, led)
+        assert a["sem_preco"] == 1
+        assert a["nao_realizado_saida"] == pytest.approx(0.0)
 
     def test_carteira_vazia_e_o_capital_inicial(self, con):
         a = carteira.avaliar(con, Ledger(capital_inicial=1000.0))

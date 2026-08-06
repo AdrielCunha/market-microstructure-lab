@@ -115,6 +115,48 @@ async def servidor_dashboard(store: Store, books: BookCollector,
             func(con=leitura)
         return buf.getvalue()
 
+    # Relatórios prontos, recalculados em segundo plano.
+    #
+    # Antes, cada carregamento de página disparava a consulta na hora, segurando
+    # o `db_lock` por 20 a 40 segundos — e nesse tempo o coletor PARAVA de
+    # processar evento. Uma consulta passou de 300s e o watchdog matou o
+    # processo: `309s sem processar evento algum`. Ou seja, abrir o painel
+    # derrubava a coleta, e piorava conforme o banco crescia.
+    #
+    # Agora o cálculo acontece num relógio próprio, e a página só entrega o que
+    # já está pronto. Carregar o painel virou custo zero para o banco.
+    cache: dict[str, tuple[float, str]] = {}
+
+    def _servir(rota: str) -> str:
+        pronto = cache.get(rota)
+        if pronto is None:
+            return nav.pagina_texto(
+                rota.strip("/"),
+                "Relatorio ainda nao calculado.\n\n"
+                "Ele e recalculado em segundo plano de tempos em tempos, para\n"
+                "que abrir esta pagina nunca dispute o banco com o coletor.\n"
+                "Aguarde alguns minutos e recarregue.", rota)
+        idade = time.monotonic() - pronto[0]
+        return pronto[1].replace(
+            "</pre>", f"</pre><div style='color:#5f6874;font-size:12px;"
+                      f"padding-top:10px'>calculado ha {idade/60:.0f} min</div>")
+
+    async def precomputador(minutos: float) -> None:
+        """Recalcula os relatórios pesados fora do caminho da requisição."""
+        while True:
+            for rota, fn in TEXTUAIS.items():
+                try:
+                    texto = await asyncio.to_thread(_relatorio, fn)
+                    cache[rota] = (time.monotonic(),
+                                   nav.pagina_texto(rota.strip("/"), texto, rota))
+                except Exception as exc:
+                    store.log("run", "warn", "precompute falhou",
+                              {"rota": rota, "erro": repr(exc)[:300]})
+                # Respira entre relatórios: soltar o lock deixa o coletor
+                # drenar o buffer antes da próxima consulta pesada.
+                await asyncio.sleep(5)
+            await asyncio.sleep(minutos * 60)
+
     async def handler(reader: asyncio.StreamReader,
                       writer: asyncio.StreamWriter) -> None:
         try:
@@ -143,9 +185,7 @@ async def servidor_dashboard(store: Store, books: BookCollector,
             # navegação: em texto puro eram becos sem saída — para sair, só o
             # botão voltar do navegador.
             if rota in TEXTUAIS:
-                fn = TEXTUAIS[rota]
-                texto = await asyncio.to_thread(_relatorio, fn)
-                corpo = nav.pagina_texto(rota.strip("/"), texto, rota)
+                corpo = _servir(rota)
             elif rota == "/paper":
                 estado = estado_paper()
                 corpo = await asyncio.to_thread(_com_lock, paper_dash.pagina,
@@ -188,9 +228,16 @@ async def servidor_dashboard(store: Store, books: BookCollector,
     print(f"\n  PAINEL: http://127.0.0.1:{porta}")
     print("    /coleta   saude do coletor      /paper    paper trading")
     print("    /gate0    veredito              /verify   integridade")
-    print("    /markout  selecao adversa\n")
-    async with servidor:
-        await servidor.serve_forever()
+    print("    /markout  selecao adversa       /ordens   ordem a ordem\n")
+
+    from core import config as _cfg
+    minutos = float(_cfg.load()["analise"].get("precompute_minutos", 10))
+    tarefa = asyncio.create_task(precomputador(minutos), name="precompute")
+    try:
+        async with servidor:
+            await servidor.serve_forever()
+    finally:
+        tarefa.cancel()
 
 
 def iniciar_watchdog(books: BookCollector, limite_s: float = 300.0) -> None:

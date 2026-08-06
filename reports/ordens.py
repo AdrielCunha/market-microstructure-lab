@@ -20,6 +20,7 @@ import time
 
 import duckdb
 
+from core import janela
 from engine.ledger import Ledger
 from reports import nav
 
@@ -152,6 +153,7 @@ def carregar(con: duckdb.DuckDBPyConnection, estrategia: str) -> dict:
         mids = dict(con.execute(f"""
             SELECT token_id, last(mid ORDER BY ts_local) FROM book_top
             WHERE token_id IN ({marcas}) AND mid IS NOT NULL
+              {janela.clausula()}
             GROUP BY token_id
         """, list(posicoes)).fetchall())
         infos = dict((r[0], r) for r in con.execute(f"""
