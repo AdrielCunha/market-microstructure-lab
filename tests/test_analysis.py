@@ -14,7 +14,7 @@ import pytest
 from analysis.fees import CostModel, fee_multiplier, taker_fee
 from analysis.negrisk import custo_da_cesta, episodios, serie_do_evento
 from collector.books import BookCollector
-from core.db import SCHEMA, Store
+from core.db import SCHEMA, now_ms, Store
 
 
 @pytest.fixture
@@ -150,11 +150,15 @@ class TestNegativeRisk:
         arrastar o ultimo valor conhecido de cada uma."""
         con = duckdb.connect(":memory:")
         con.execute(SCHEMA)
+        # Dentro da janela de analise: `serie_do_evento` passou a limitar o
+        # periodo (core/janela.py) porque varrer a tabela inteira materializava
+        # o resultado em polars e estourava a memoria do container.
+        t = now_ms() - 3_600_000
         con.executemany(
             "INSERT INTO book_top VALUES (?,?,?,?,?,?,?,?,?,?)",
-            [("A", 1, 1, 0.30, 1.0, 0.32, 1.0, 0.31, 0.02, "ws"),
-             ("B", 1, 1, 0.60, 1.0, 0.62, 1.0, 0.61, 0.02, "ws"),
-             ("A", 2, 2, 0.35, 1.0, 0.37, 1.0, 0.36, 0.02, "ws")],
+            [("A", t, t, 0.30, 1.0, 0.32, 1.0, 0.31, 0.02, "ws"),
+             ("B", t, t, 0.60, 1.0, 0.62, 1.0, 0.61, 0.02, "ws"),
+             ("A", t + 1, t + 1, 0.35, 1.0, 0.37, 1.0, 0.36, 0.02, "ws")],
         )
         serie = serie_do_evento(con, ["A", "B"])
         con.close()

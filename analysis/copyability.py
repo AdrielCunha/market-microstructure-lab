@@ -23,9 +23,11 @@ from __future__ import annotations
 import polars as pl
 
 from analysis.fees import CostModel, taker_fee
+from core import janela
 from core.db import connect
 
-ATRASO = """
+def _atraso() -> str:
+    return f"""
 SELECT name, wallet, count(*) AS n,
        round(min((ts_seen - ts_trade) / 1000.0), 1)                AS min_s,
        round(quantile_cont((ts_seen - ts_trade) / 1000.0, 0.25), 1) AS p25_s,
@@ -33,7 +35,7 @@ SELECT name, wallet, count(*) AS n,
        round(quantile_cont((ts_seen - ts_trade) / 1000.0, 0.95), 1) AS p95_s,
        round(median(notional_usd), 2)                              AS notional_mediano
 FROM wallet_trades
-WHERE NOT is_backfill
+WHERE NOT is_backfill {janela.clausula()}
 GROUP BY 1, 2
 ORDER BY n DESC
 """
@@ -45,7 +47,8 @@ ORDER BY n DESC
 # `b.ts_local >= t.ts_seen` faz o ASOF escolher a observação mais próxima à
 # frente. O corte de 60s evita casar com um livro de muito depois, quando o
 # mercado já é outro.
-COPIA = """
+def _copia() -> str:
+    return f"""
 SELECT t.name, t.side, t.price AS preco_deles, t.size, t.notional_usd,
        t.ts_trade, t.ts_seen,
        (t.ts_seen - t.ts_trade) / 1000.0 AS atraso_s,
@@ -60,6 +63,7 @@ ASOF JOIN book_top b
 -- para capturar.
 LEFT JOIN markets m ON m.token_id = t.token_id
 WHERE NOT t.is_backfill AND b.best_ask IS NOT NULL AND b.best_bid IS NOT NULL
+  {janela.clausula('t.ts_seen')} {janela.clausula('b.ts_local')}
   AND b.source IN ('ws', 'copy_probe')
   AND b.ts_local - t.ts_seen <= 60000
 """
@@ -105,7 +109,7 @@ def main() -> None:
     print("=" * 68)
     print("1) ATRASO DE VISAO — quando o trade aparece na API publica")
     print("=" * 68)
-    atraso = con.execute(ATRASO).pl()
+    atraso = con.execute(_atraso()).pl()
     if atraso.is_empty():
         print("Sem trades novos ainda. Rode `python -m collector.run` por mais tempo.")
         con.close()
@@ -131,7 +135,7 @@ def main() -> None:
     print("\n" + "=" * 68)
     print("2) CUSTO DE COPIAR — preco que eu pagaria vs. preco que eles pegaram")
     print("=" * 68)
-    df = con.execute(COPIA).pl()
+    df = con.execute(_copia()).pl()
     con.close()
 
     if df.is_empty():

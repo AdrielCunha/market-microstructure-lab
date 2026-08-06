@@ -60,6 +60,38 @@ class TestLimiteDeMemoria:
         assert _bytes(lim) <= _bytes(cfg()["analise"]["duckdb_memoria"]) * 1.05
         assert int(thr) == cfg()["analise"]["duckdb_threads"]
 
+    def test_toda_analise_pesada_respeita_a_janela(self):
+        """Consulta sem janela varre o banco inteiro e materializa em polars —
+        e o polars nao obedece o limite de memoria do DuckDB.
+
+        Foi assim que o /gate0 derrubou o container: `nichos` e `markout`
+        tinham janela, mas `spreads`, `negrisk` e `copyability`, que o gate0
+        chama por baixo, nao tinham. Meia correcao nao corrige.
+        """
+        for nome in ("spreads", "negrisk", "copyability", "nichos", "markout"):
+            fonte = (RAIZ / "analysis" / f"{nome}.py").read_text(encoding="utf-8")
+            assert "janela.clausula" in fonte, \
+                f"analysis/{nome}.py varre o banco sem limite de janela"
+
+    def test_janela_nao_congela_no_import(self):
+        """A janela e relativa ao agora e o coletor fica dias de pe. Consulta
+        montada em f-string de MODULO fixaria o corte no momento do import."""
+        for nome in ("spreads", "negrisk", "copyability", "nichos", "markout"):
+            for linha in (RAIZ / "analysis" / f"{nome}.py").read_text(
+                    encoding="utf-8").splitlines():
+                if "janela.clausula" not in linha:
+                    continue
+                assert not linha.lstrip().startswith(("SERIE", "QUERY", "ATRASO",
+                                                      "COPIA", "BASE")), \
+                    f"analysis/{nome}.py monta a janela no import: {linha[:60]}"
+
+    def test_precompute_pode_ser_desligado(self):
+        """Intervalo enorme nao desligava: a PRIMEIRA rodada acontecia antes do
+        intervalo, e era ela que matava o container."""
+        fonte = (RAIZ / "collector" / "run.py").read_text(encoding="utf-8")
+        assert "if minutos <= 0:" in fonte, \
+            "precomputador sem chave de desligar de verdade"
+
     def test_limite_nao_impede_consulta_normal(self, tmp_path):
         """Derramar para disco e aceitavel; recusar a consulta nao e."""
         con = connect(path=tmp_path / "t2.duckdb")

@@ -24,6 +24,7 @@ import polars as pl
 
 from analysis.fees import CostModel, taker_fee
 from core import config
+from core import janela
 from core.db import connect
 
 # Só o token "Yes" de cada mercado entra na soma — é a perna que representa
@@ -55,11 +56,13 @@ SELECT token_id, question FROM markets
 WHERE event_id = ? AND neg_risk AND outcome_index = 0
 """
 
-SERIE = """
+def _serie() -> str:
+    return f"""
 SELECT token_id, ts_local, best_ask, best_bid
 FROM book_top
-WHERE token_id IN ({}) AND source = 'ws'
+WHERE token_id IN ({{}}) AND source = 'ws'
   AND best_ask IS NOT NULL AND best_bid IS NOT NULL
+  {janela.clausula()}
 ORDER BY ts_local
 """
 
@@ -72,7 +75,7 @@ def serie_do_evento(con, token_ids: list[str]) -> pl.DataFrame:
     do primeiro tick de algum token a soma é indefinida — essas linhas caem.
     """
     marks = ", ".join("?" * len(token_ids))
-    df = con.execute(SERIE.format(marks), token_ids).pl()
+    df = con.execute(_serie().format(marks), token_ids).pl()
     if df.is_empty():
         return df
 

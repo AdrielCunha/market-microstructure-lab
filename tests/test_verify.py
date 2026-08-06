@@ -15,6 +15,7 @@ import io
 import duckdb
 import pytest
 
+from core import janela
 from core.db import SCHEMA, now_ms
 from reports import verify
 
@@ -29,8 +30,11 @@ def base_ms() -> int:
     2023, como havia aqui, cai fora da janela e faz toda checagem rodar sobre
     zero linha — os testes passariam a validar o caminho de "sem dado" achando
     que validavam a checagem.
+
+    Derivado da configuração, e não cravado: a janela já mudou de 48h para 6h
+    uma vez, e um número fixo aqui quebraria de novo na próxima mudança.
     """
-    return now_ms() - 20 * 3_600_000
+    return now_ms() - int(janela.horas() * 0.8 * 3_600_000)
 
 
 @pytest.fixture

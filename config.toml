@@ -127,7 +127,10 @@ exposicao_maxima_usd = 5000.0 # trava de exposição por token
 # Medido com 1,47 GB acumulados: sem limite, /gate0 levava 38s e /nichos nem
 # respondia, e enquanto rodavam o coletor PARAVA de processar evento. Uma
 # consulta passou de 300s e o watchdog matou o processo.
-janela_horas = 48.0
+# 6h, nao 48h. Com 48h o /gate0 materializava a serie inteira em polars e o
+# container morria por OOM a cada 3 minutos. O limite do DuckDB nao cobre isso:
+# quem estoura e o DataFrame do lado do Python, nao o motor do banco.
+janela_horas = 6.0
 # Teto de memoria do DuckDB. Ele NAO enxerga cgroup: le a RAM da maquina (2 GB)
 # e se da ~80% disso, que e o proprio teto do container — e morre por OOM numa
 # consulta pesada. Medido: 5 mortes em meia hora. Com limite explicito ele
@@ -138,7 +141,10 @@ duckdb_threads = 2
 # De quantos em quantos minutos recalcular os relatorios pesados em segundo
 # plano. As paginas passam a servir o resultado pronto, entao abrir o painel
 # nunca mais toca no banco.
-precompute_minutos = 10.0
+# 0 DESLIGA. Fica desligado ate a memoria dos relatorios estar provada estavel
+# em producao — foi o precompute que transformou uma morte ocasional por OOM
+# numa a cada 3 minutos.
+precompute_minutos = 0.0
 
 [dashboard]
 # Servido pelo próprio coletor: o DuckDB não deixa um segundo processo abrir o

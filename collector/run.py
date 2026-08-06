@@ -142,7 +142,16 @@ async def servidor_dashboard(store: Store, books: BookCollector,
                       f"padding-top:10px'>calculado ha {idade/60:.0f} min</div>")
 
     async def precomputador(minutos: float) -> None:
-        """Recalcula os relatórios pesados fora do caminho da requisição."""
+        """Recalcula os relatórios pesados fora do caminho da requisição.
+
+        `minutos <= 0` desliga. Isto existe porque a primeira versão não tinha
+        desligamento: pôr um intervalo enorme no config não bastava, já que a
+        primeira rodada acontecia ANTES do intervalo — e era ela que derrubava o
+        container. Chave de desligar que não desliga é pior que não ter chave.
+        """
+        if minutos <= 0:
+            store.log("run", "info", "precompute desligado", {"minutos": minutos})
+            return
         # O arranque já é o momento mais pesado: catálogo, restauração dos seis
         # motores e as primeiras rajadas do WebSocket. Somar consulta analítica
         # a isso é pedir para o container estourar a memória logo de cara.

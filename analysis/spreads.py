@@ -12,9 +12,11 @@ from __future__ import annotations
 import polars as pl
 
 from analysis.fees import CostModel, taker_fee
+from core import janela
 from core.db import connect
 
-QUERY = """
+def _query() -> str:
+    return f"""
 SELECT m.category, m.neg_risk, m.fee_rate, m.fee_rebate_rate,
        m.liquidity_usd, m.end_date,
        b.token_id, b.best_bid, b.best_ask, b.mid, b.spread, b.ts_local,
@@ -23,13 +25,14 @@ FROM book_top b
 JOIN markets m USING (token_id)
 WHERE b.source = 'ws' AND b.spread IS NOT NULL AND b.mid IS NOT NULL
   AND b.spread >= 0
+  {janela.clausula('b.ts_local')}
 """
 
 
 def load(con=None) -> pl.DataFrame:
     own = con is None
     con = con or connect(read_only=True)
-    df = con.execute(QUERY).pl()
+    df = con.execute(_query()).pl()
     if own:
         con.close()
     return df
