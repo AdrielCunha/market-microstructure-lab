@@ -170,6 +170,38 @@ def now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def _limitar_memoria(con: duckdb.DuckDBPyConnection) -> None:
+    """Impede o DuckDB de estourar o teto de memória do container.
+
+    O DuckDB não enxerga cgroup: ele lê a RAM da MÁQUINA e define o próprio
+    limite em ~80% disso. Numa droplet de 2 GB isso dá ~1,5 GB — exatamente o
+    teto do container. Resultado medido em produção:
+
+        Memory cgroup out of memory: Killed process (python)
+        MEM 1.465GiB / 1.465GiB  99.98%
+
+    Cinco mortes por OOM em meia hora, com o Docker reerguendo a cada vez. O
+    sintoma na tela era "o painel não responde"; a causa era o banco pedindo
+    mais memória do que o container pode dar, numa consulta pesada.
+
+    Com o limite explícito o DuckDB **derrama para disco** em vez de morrer —
+    a consulta fica mais lenta, que é o preço certo a pagar. `threads` também
+    é fixado: a droplet tem 1 vCPU, e paralelismo demais só multiplica o
+    consumo de memória sem acelerar nada.
+    """
+    cfg = config.load()
+    try:
+        mem = str(cfg["analise"].get("duckdb_memoria", "512MB"))
+        threads = int(cfg["analise"].get("duckdb_threads", 2))
+    except Exception:
+        mem, threads = "512MB", 2
+    for sql in (f"SET memory_limit='{mem}'", f"SET threads={threads}"):
+        try:
+            con.execute(sql)
+        except duckdb.Error:
+            pass          # versão antiga do DuckDB: segue sem o ajuste
+
+
 def connect(read_only: bool = False, path: Path | None = None) -> duckdb.DuckDBPyConnection:
     cfg = config.load()
     p = path or cfg.db_path
@@ -177,6 +209,7 @@ def connect(read_only: bool = False, path: Path | None = None) -> duckdb.DuckDBP
     if read_only and not p.exists():
         raise FileNotFoundError(f"Banco não existe ainda: {p}. Rode o coletor primeiro.")
     con = duckdb.connect(str(p), read_only=read_only)
+    _limitar_memoria(con)
     if not read_only:
         con.execute(SCHEMA)
     return con

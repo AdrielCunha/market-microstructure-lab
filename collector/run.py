@@ -143,6 +143,10 @@ async def servidor_dashboard(store: Store, books: BookCollector,
 
     async def precomputador(minutos: float) -> None:
         """Recalcula os relatórios pesados fora do caminho da requisição."""
+        # O arranque já é o momento mais pesado: catálogo, restauração dos seis
+        # motores e as primeiras rajadas do WebSocket. Somar consulta analítica
+        # a isso é pedir para o container estourar a memória logo de cara.
+        await asyncio.sleep(120)
         while True:
             for rota, fn in TEXTUAIS.items():
                 try:
