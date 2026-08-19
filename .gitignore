@@ -23,3 +23,7 @@ venv/
 .ruff_cache/
 *.egg-info/
 .DS_Store
+
+# Dataset exportado (421 MB, acima do limite do GitHub)
+dataset/
+*.parquet

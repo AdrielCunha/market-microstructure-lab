@@ -1,111 +1,160 @@
-# pmlab — Fase 0: medir antes de arriscar
+# pmlab — medindo se dá para ganhar dinheiro no Polymarket
 
-> **Chegando agora ou voltando depois de um tempo? Leia [CONTEXT.md](CONTEXT.md)
-> primeiro** — ele tem o histórico da decisão, todos os números já medidos, os
-> bugs que não devem ser reintroduzidos e o estado atual.
+Laboratório de instrumentação para responder, **com dado e não com opinião**, se
+existe um negócio sistemático de trading no [Polymarket](https://polymarket.com).
 
-Laboratório de instrumentação do Polymarket. **Fase 0 não envia nenhuma ordem e
-não usa chave privada** — só endpoints públicos de leitura. O objetivo é
-produzir os números que decidem se existe negócio aqui, antes de qualquer
-dinheiro entrar.
+O projeto está **concluído**. A resposta foi *não* — e o valor está em *como* se
+chegou nela, e no que sobrou pelo caminho.
 
-## Instalação
+> **Nenhuma ordem real foi enviada. Não existe chave privada neste repositório.**
+> Todas as fases usaram apenas endpoints públicos de leitura.
+
+---
+
+## O veredito
+
+Três teses foram testadas. As três morreram, cada uma com um número:
+
+| tese | resultado | por quê |
+|---|---|---|
+| **Arbitragem** negative-risk | morta | 1 episódio em 30h, com duração de **0,0s**. A soma dos preços fica em $1,02 — sobrepreço, não desconto |
+| **Copiar carteiras** vencedoras | morta | copiar custa **6,7% do notional**; a margem do trader copiado é **1,28%**. O trade só aparece na API pública **335s** depois de acontecer |
+| **Market making** | morta | **−31,4%** em 5 dias, já a 15ms de latência e com 93% das cotações sobrevivendo |
+
+A terceira é a que interessa. Ela não perdeu por falta de velocidade: a
+velocidade foi comprada e medida. De 68 ciclos de posição, apenas **2** fecharam
+encontrando contraparte no livro — o resto foi pagar para fugir ou segurar até o
+mercado resolver.
+
+**Custo total do experimento: algumas dezenas de dólares em servidor, zero em
+dinheiro de operação.**
+
+---
+
+## A descoberta que ninguém tinha escrito
+
+A intuição de mercado é *"coloque o bot em `us-east-1`"*. Para este exchange,
+**está errada.**
+
+O Polymarket fica atrás de Cloudflare e a origem é invisível. Foi preciso
+triangular com cinco droplets descartáveis, medindo só endpoints dinâmicos
+(`cf-cache-status: DYNAMIC`) para não medir cache de borda:
+
+| de onde | PoP | round-trip | sobrevivência das cotações |
+|---|---|---|---|
+| São Paulo | GRU | 164ms | ~57% |
+| DigitalOcean SFO3 | SJC | 148ms | ~59% |
+| DigitalOcean NYC3 | EWR | 86ms | ~68% |
+| DigitalOcean AMS3 | AMS | 20ms | ~92% |
+| **DigitalOcean LON1** | **LHR** | **15ms** | **~93%** |
+
+San Jose ser 67ms pior que Newark — a largura dos EUA — prova que a origem está
+a leste. E 78ms a leste de Newark não é a Virgínia (~5ms), é o Atlântico.
+Amsterdam fecha a conta: **o CLOB do Polymarket roda na Irlanda.**
+
+Custo da descoberta: cerca de US$ 0,20 em droplets cobradas por hora.
+
+---
+
+## O dataset
+
+18,4 dias de livro de ofertas de prediction market, tick a tick. Dado granular
+desse tipo é escasso — foi a única coisa deste projeto que nunca deu resultado
+negativo.
+
+| tabela | linhas | conteúdo |
+|---|---|---|
+| `book_top` | **15.997.072** | topo de livro a cada mudança: bid, ask, tamanhos, spread |
+| `book_events` | 1.811.141 | payload cru do WebSocket, para reprocessar |
+| `wallet_trades` | 453.466 | trades públicos das 30 maiores carteiras, com o atraso de visão medido |
+| `markets` | 14.778 | catálogo: taxas, resolução, estrutura negative-risk |
+| `paper_fills` | 29.826 | execuções simuladas, com rebate e taxa por linha |
+
+**77.985 tokens · 441,9 horas contínuas · 421 MB em Parquet** (de 3,88 GB em
+DuckDB). Ver [DATASET.md](DATASET.md).
+
+---
+
+## O que torna isto um instrumento, e não uma planilha otimista
+
+Um simulador que dá lucro em qualquer estratégia não vale nada. A maior parte do
+esforço foi impedir o sistema de mentir a favor. **23 defeitos estão
+documentados em [CONTEXT.md](CONTEXT.md)**, com o motivo de cada um — e quase
+todos são da mesma família: *resultado bom demais escondendo o custo dominante*.
+
+Alguns:
+
+- **Um veredito de aprovação recusado.** Market making ia passar no Gate 0 com
+  200x de folga sobre o custo — folga que ignorava seleção adversa. Foi criado
+  um terceiro estado, `INCONCLUSIVO`, que por construção nunca devolve `PASS`.
+- **Latência medida em endpoint cacheado** deu 50ms; o caminho real dava 164ms.
+  O script agora **se recusa a reportar** se o Cloudflare disser `HIT`.
+- **A própria verificação mentiu**: reportou *3.198 lacunas de 2 minutos numa
+  janela de 225 minutos* — aritmeticamente impossível. Alarme falso é pior que
+  nenhuma verificação: treina quem lê a ignorar o vermelho.
+- **Vender a descoberto era de graça** na trava de capital: a simulação saiu com
+  6.995 cotas vendidas contra 917 compradas, uma carteira impossível de montar.
+- **Lucro de papel virava poder de fogo**, numa realimentação que produziu
+  "$35.309 de lucro sobre $1.000" em 3 horas.
+
+**142 testes** travam essas classes de erro para que não voltem.
+
+---
+
+## Arquitetura
+
+```
+collector/   WebSocket do CLOB (400 tokens simultâneos), catálogo, carteiras
+engine/      simulador de market making: latência, fila, estoque, liquidação
+analysis/    spreads, negative-risk, copyability, nichos, markout, latência
+reports/     painéis HTTP servidos pelo próprio coletor
+```
+
+Decisões não óbvias, todas motivadas por falha real em produção:
+
+- **Processo único.** O DuckDB trava o arquivo num escritor só — os painéis
+  rodam dentro do coletor, sobre uma conexão de leitura com lock explícito.
+- **Latência como matriz.** `latencias_ms = [0, 15, 170]` roda seis motores
+  sobre o **mesmo tick de mercado**. Comparação pareada: o regime de mercado
+  cancela, sobra só o efeito da distância.
+- **Duas regras de execução em paralelo.** `cruzamento` conta execuções demais
+  (o livro também se move por cancelamento), `negocio` conta de menos (o feed
+  publica ~9 negócios para cada ~1.300 mudanças de preço). A verdade fica no
+  meio, e a de baixo é a que decide.
+- **Watchdog + `restart: unless-stopped`.** Congelar em silêncio numa coleta de
+  dias é pior que cair. O watchdog transforma travamento em saída visível; o
+  Docker reergue; o livro-caixa é reconstruído de `paper_fills`.
+- **Janela de análise.** Com 3,9 GB acumulados, consulta sem limite estourava a
+  memória do container e o kernel matava o processo. O DuckDB não enxerga
+  cgroup: lê a RAM da máquina e se dá 80% dela.
+
+---
+
+## Rodando
 
 ```bash
-python -m pip install duckdb polars pyarrow httpx websockets pytest
+pip install -r requirements.txt
+
+python -m collector.run          # coleta (Ctrl+C para parar)
+python -m reports.verify         # os dados prestam?
+python -m reports.gate0          # o veredito
+python -m analysis.latencia      # onde esta máquina está na escada
+python -m pytest tests -q        # 142 testes
 ```
 
-## Uso
+Painel em `http://127.0.0.1:8787` — coleta, carteira, ordem a ordem, markout,
+nichos.
 
-```bash
-# 1. Coletar. Roda até Ctrl+C; --minutes para parar sozinho.
-python -m collector.run
-python -m collector.run --minutes 60
+Com Docker: `docker compose up -d --build`. O painel fica preso em `127.0.0.1`
+de propósito — não tem autenticação.
 
-# 2. Conferir que os dados prestam ANTES de acreditar em qualquer análise.
-python -m reports.verify
+---
 
-# 3. O veredito.
-python -m reports.gate0
+## O que eu levo daqui
 
-# Análises individuais
-python -m analysis.spreads       # onde o spread paga market making
-python -m analysis.negrisk       # arbitragem existe? dura quanto?
-python -m analysis.copyability   # copiar carteira dá lucro ou prejuízo?
-python -m analysis.fees          # modelo de custo
-python -m collector.catalog      # só atualizar o catálogo
+O plano dizia, antes de qualquer linha de código: *"se não passar, o projeto
+para aqui. Isso é sucesso, não fracasso: custou tempo, não dinheiro, e a
+resposta é definitiva."*
 
-python -m pytest tests/ -q
-```
-
-Tudo é configurado em `config.toml`.
-
-## Como está organizado
-
-```
-core/       config, DuckDB (schema + escrita em lote), clientes HTTP
-collector/  catalog (o que monitorar), books (WebSocket), wallets (carteiras),
-            run (processo único que roda todos)
-analysis/   fees (custo), spreads, negrisk, copyability
-reports/    verify (integridade), gate0 (veredito)
-```
-
-Um processo só escreve no banco (`collector.run`) — DuckDB não aceita dois
-escritores no mesmo arquivo. As análises abrem em modo leitura.
-
-## Decisões que não são óbvias
-
-**O catálogo seleciona eventos inteiros, não mercados.** Filtrar mercado a
-mercado por liquidez descarta pernas fracas de um evento negative-risk, e somar
-um subconjunto dos resultados fabrica "arbitragem" que não existe. Foi um bug
-real: eventos incompletos apareciam somando $0,85 em vez de $1,00.
-
-**98% das atualizações de livro são descartadas.** A maioria dos `price_change`
-mexe em níveis fundos e deixa o topo igual. Toda a análise da Fase 0 olha só o
-topo, então repetição não é gravada. Sem isso o banco cresceria alguns GB/dia.
-Snapshots REST de auditoria nunca são descartados — são a referência de
-conferência.
-
-**A escrita usa DataFrame, não `executemany`.** O WebSocket entrega ~800
-eventos/s; inserção linha a linha não acompanha e o buffer cresce sem parar.
-
-**O ASOF join da análise de cópia olha para a FRENTE no tempo.** Quem copia vê
-o trade e só então consulta o livro — usar o livro anterior daria um preço que
-nunca teria sido alcançável e faria a cópia parecer melhor do que é.
-
-**A fórmula da taxa não está verificada.** O campo `fee_rate_bps` do WebSocket
-veio `0` em 957/957 execuções observadas. Sabemos o `feeSchedule` do catálogo
-(esportes: rate 0.05, rebate 0.15; não-esportes: 0.07 e 0.25), mas há duas
-leituras plausíveis do multiplicador de preço. O modelo implementa as duas e usa
-a mais cara por padrão. Isso só vira medição real na Fase 2, comparando com
-trades on-chain.
-
-## O que já foi medido
-
-Coleta ainda curta (minutos, não semanas) — direção, não veredito final.
-
-| Medida | Valor |
-|---|---|
-| Latência desta máquina → CLOB | ~230ms TTFB |
-| Throughput do WebSocket | ~800 eventos/s em 400 tokens |
-| Spread mediano do livro | 1–2 centavos |
-| Soma dos resultados em eventos negRisk | ~$1,02 (mediana) |
-| Custo de montar cesta de arbitragem | ~$0,05 por $1 de payoff |
-| **Atraso até um trade aparecer na API** | **mínimo 56s, mediana ~5min** |
-| Desvantagem de entrada ao copiar | ~2 centavos/cota, pior em 78% dos casos |
-| Custo total de copiar | ~8,9% do notional |
-
-O atraso da API não é do poll (que roda a cada 3s) nem da rede: é do indexador
-do Polymarket. Nenhum servidor nos EUA reduz esse número.
-
-## Estado dos critérios do Gate 0
-
-- **Arbitragem negative-risk — FALHA.** O desvio existe (~2% de sobre-preço),
-  mas é menor que o custo de capturá-lo. Arb aparente < custo não é arb.
-- **Copy trading — FALHA.** Custa ~8,9% do notional para copiar, contra margem
-  de ~1,28% do trader copiado.
-- **Market making — INCONCLUSIVO, por construção.** O que dá para medir só com
-  o livro é a receita bruta. O custo que decide — seleção adversa, ser executado
-  justamente quando o preço vai contra — não aparece no livro: só nos fills, e
-  fill só existe com ordem postada. Declarar PASS aqui seria o falso positivo
-  clássico. Resolve-se na Fase 1, com paper trading.
+Foi o que aconteceu. A parte difícil não foi construir o coletor — foi construir
+um instrumento disposto a dizer **não**, e depois acreditar nele.
