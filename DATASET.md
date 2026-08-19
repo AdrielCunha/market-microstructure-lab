@@ -2,8 +2,9 @@
 
 **English** · [Português](DATASET.pt-BR.md)
 
-Continuous top-of-book series collected over WebSocket between **2026-07-19 and
-2026-08-06**, from a droplet in London (~15ms from the exchange).
+Continuous top-of-book series collected over WebSocket between **2026-07-31 and
+2026-08-19**, from a droplet in London (~15ms from the exchange). Every calendar
+day in that range carries data — between 411k and 1.73M updates.
 
 Granular prediction-market data is scarce: public APIs expose aggregated prices,
 not how the book moves. This dataset holds **every change to the best bid/ask**

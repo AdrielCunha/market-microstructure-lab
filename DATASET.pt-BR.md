@@ -3,8 +3,9 @@
 **Português** · [English](DATASET.md)
 
 
-Série contínua de topo de livro coletada por WebSocket entre **19/07 e
-06/08/2026**, de uma droplet em Londres (~15ms do exchange).
+Série contínua de topo de livro coletada por WebSocket entre **31/07 e
+19/08/2026**, de uma droplet em Londres (~15ms do exchange). Todos os dias do
+intervalo têm dado — entre 411 mil e 1,73 milhão de atualizações.
 
 Dado granular de prediction market é escasso: as APIs públicas dão preço
 agregado, não a evolução do livro tick a tick. Este dataset tem **cada mudança
