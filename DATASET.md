@@ -16,7 +16,7 @@ across 77,985 tokens.
 | Top-of-book updates | 15,997,072 |
 | Format | Parquet, ZSTD compression |
 | Size | 421 MB (from 3.88 GB in DuckDB) |
-| Licence | free to use, no warranty |
+| Licence | code: MIT. Data derived from Polymarket's public endpoints â€” redistributed as observed, with no claim of ownership over it |
 
 ## Download
 
@@ -64,113 +64,224 @@ Also readable with `pandas.read_parquet`, `polars.read_parquet`, Spark, etc.
 
 ## Schema
 
-### `book_top.parquet` — 15,997,072 rows
+
+### `book_top.parquet` â€” 15,997,072 rows
+
+
 
 | column | type |
+
 |---|---|
+
 | `token_id` | VARCHAR |
+
 | `ts_exchange` | BIGINT |
+
 | `ts_local` | BIGINT |
+
 | `best_bid` | DOUBLE |
+
 | `best_bid_size` | DOUBLE |
+
 | `best_ask` | DOUBLE |
+
 | `best_ask_size` | DOUBLE |
+
 | `mid` | DOUBLE |
+
 | `spread` | DOUBLE |
+
 | `source` | VARCHAR |
 
-### `book_events.parquet` — 1,811,141 rows
+
+
+### `book_events.parquet` â€” 1,811,141 rows
+
+
 
 | column | type |
+
 |---|---|
+
 | `seq` | BIGINT |
+
 | `token_id` | VARCHAR |
+
 | `event_type` | VARCHAR |
+
 | `ts_exchange` | BIGINT |
+
 | `ts_local` | BIGINT |
+
 | `payload` | JSON |
 
-### `wallet_trades.parquet` — 453,466 rows
+
+
+### `wallet_trades.parquet` â€” 453,466 rows
+
+
 
 | column | type |
+
 |---|---|
+
 | `trade_uid` | VARCHAR |
+
 | `wallet` | VARCHAR |
+
 | `name` | VARCHAR |
+
 | `token_id` | VARCHAR |
+
 | `condition_id` | VARCHAR |
+
 | `side` | VARCHAR |
+
 | `size` | DOUBLE |
+
 | `price` | DOUBLE |
+
 | `notional_usd` | DOUBLE |
+
 | `ts_trade` | BIGINT |
+
 | `ts_seen` | BIGINT |
+
 | `is_backfill` | BOOLEAN |
+
 | `title` | VARCHAR |
+
 | `outcome` | VARCHAR |
+
 | `slug` | VARCHAR |
+
 | `tx_hash` | VARCHAR |
 
-### `markets.parquet` — 14,778 rows
+
+
+### `markets.parquet` â€” 14,778 rows
+
+
 
 | column | type |
+
 |---|---|
+
 | `token_id` | VARCHAR |
+
 | `condition_id` | VARCHAR |
+
 | `event_id` | VARCHAR |
+
 | `event_slug` | VARCHAR |
+
 | `event_title` | VARCHAR |
+
 | `question` | VARCHAR |
+
 | `outcome` | VARCHAR |
+
 | `outcome_index` | INTEGER |
+
 | `neg_risk` | BOOLEAN |
+
 | `neg_risk_market` | VARCHAR |
+
 | `event_n_outcomes` | INTEGER |
+
 | `category` | VARCHAR |
+
 | `end_date` | TIMESTAMP |
+
 | `liquidity_usd` | DOUBLE |
+
 | `volume_usd` | DOUBLE |
+
 | `min_tick_size` | DOUBLE |
+
 | `order_min_size` | DOUBLE |
+
 | `fee_type` | VARCHAR |
+
 | `fee_rate` | DOUBLE |
+
 | `fee_exponent` | DOUBLE |
+
 | `fee_rebate_rate` | DOUBLE |
+
 | `fee_taker_only` | BOOLEAN |
+
 | `fees_enabled` | BOOLEAN |
+
 | `active` | BOOLEAN |
+
 | `closed` | BOOLEAN |
+
 | `accepting_orders` | BOOLEAN |
+
 | `selected` | BOOLEAN |
+
 | `seen_at` | TIMESTAMP |
+
 | `updated_at` | TIMESTAMP |
 
-### `paper_fills.parquet` — 29,826 rows
+
+
+### `paper_fills.parquet` â€” 29,826 rows
+
+
 
 | column | type |
+
 |---|---|
+
 | `ts_local` | BIGINT |
+
 | `strategy` | VARCHAR |
+
 | `regra` | VARCHAR |
+
 | `token_id` | VARCHAR |
+
 | `side` | VARCHAR |
+
 | `price` | DOUBLE |
+
 | `size` | DOUBLE |
+
 | `notional_usd` | DOUBLE |
+
 | `mid_at_fill` | DOUBLE |
+
 | `spread_at_fill` | DOUBLE |
+
 | `rebate` | DOUBLE |
+
 | `posicao_depois` | DOUBLE |
+
 | `taxa` | DOUBLE |
+
 | `agressiva` | BOOLEAN |
 
-### `collector_log.parquet` — 34,118 rows
+
+
+### `collector_log.parquet` â€” 34,118 rows
+
+
 
 | column | type |
+
 |---|---|
+
 | `ts_local` | BIGINT |
+
 | `component` | VARCHAR |
+
 | `level` | VARCHAR |
+
 | `message` | VARCHAR |
+
 | `detail` | JSON |
+
+
 

@@ -17,7 +17,7 @@ do melhor bid/ask** de 77.985 tokens.
 | Mudanças de topo | 15.997.072 |
 | Formato | Parquet, compressão ZSTD |
 | Tamanho | 421 MB (de 3,88 GB em DuckDB) |
-| Licença | livre para uso, sem garantia |
+| Licença | código: MIT. O dado vem de endpoints públicos do Polymarket — redistribuído como observado, sem reivindicação de propriedade sobre ele |
 
 ## Baixar
 
