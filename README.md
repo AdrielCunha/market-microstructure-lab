@@ -1,46 +1,47 @@
-# pmlab — medindo se dá para ganhar dinheiro no Polymarket
+# pmlab — measuring whether market making on Polymarket actually pays
 
-Laboratório de instrumentação para responder, **com dado e não com opinião**, se
-existe um negócio sistemático de trading no [Polymarket](https://polymarket.com).
+**English** · [Português](README.pt-BR.md)
 
-O projeto está **concluído**. A resposta foi *não* — e o valor está em *como* se
-chegou nela, e no que sobrou pelo caminho.
+Instrumentation built to answer, **with measurements rather than opinions**,
+whether a systematic trading business exists on [Polymarket](https://polymarket.com).
 
-> **Nenhuma ordem real foi enviada. Não existe chave privada neste repositório.**
-> Todas as fases usaram apenas endpoints públicos de leitura.
+The project is **finished**. The answer was *no* — and the value is in *how* that
+was established, and in what it left behind.
+
+> **No real orders were ever sent. There is no private key in this repository.**
+> Every phase used public read-only endpoints only.
 
 ---
 
-## O veredito
+## The verdict
 
-Três teses foram testadas. As três morreram, cada uma com um número:
+Three theses were tested. All three died, each with a number attached:
 
-| tese | resultado | por quê |
+| thesis | outcome | why |
 |---|---|---|
-| **Arbitragem** negative-risk | morta | 1 episódio em 30h, com duração de **0,0s**. A soma dos preços fica em $1,02 — sobrepreço, não desconto |
-| **Copiar carteiras** vencedoras | morta | copiar custa **6,7% do notional**; a margem do trader copiado é **1,28%**. O trade só aparece na API pública **335s** depois de acontecer |
-| **Market making** | morta | **−31,4%** em 5 dias, já a 15ms de latência e com 93% das cotações sobrevivendo |
+| **Negative-risk arbitrage** | dead | 1 episode in 30h, lasting **0.0s**. Best asks sum to $1.02 — a premium, not a discount |
+| **Copying winning wallets** | dead | copying costs **6.7% of notional**; the copied trader's margin is **1.28%**. A trade only surfaces on the public API **335s** after it happens |
+| **Market making** | dead | **−31.4%** over 5 days, already at 15ms latency with 93% of quotes surviving transit |
 
-A terceira é a que interessa. Ela não perdeu por falta de velocidade: a
-velocidade foi comprada e medida. De 68 ciclos de posição, apenas **2** fecharam
-encontrando contraparte no livro — o resto foi pagar para fugir ou segurar até o
-mercado resolver.
+The third one is the interesting one. It did not fail for lack of speed — the
+speed was bought and measured. Out of 68 position cycles, only **2** closed by
+finding a counterparty in the book. The rest were either paying to escape or
+holding until the market resolved.
 
-**Custo total do experimento: algumas dezenas de dólares em servidor, zero em
-dinheiro de operação.**
+**Total cost: a few dozen dollars of server time, zero trading capital.**
 
 ---
 
-## A descoberta que ninguém tinha escrito
+## The finding nobody had written down
 
-A intuição de mercado é *"coloque o bot em `us-east-1`"*. Para este exchange,
-**está errada.**
+Conventional wisdom says *"put the bot in `us-east-1`."* For this exchange,
+**that is wrong.**
 
-O Polymarket fica atrás de Cloudflare e a origem é invisível. Foi preciso
-triangular com cinco droplets descartáveis, medindo só endpoints dinâmicos
-(`cf-cache-status: DYNAMIC`) para não medir cache de borda:
+Polymarket sits behind Cloudflare and the origin is invisible. Locating it took
+triangulation from five disposable droplets, measuring only dynamic endpoints
+(`cf-cache-status: DYNAMIC`) so as not to measure an edge cache instead:
 
-| de onde | PoP | round-trip | sobrevivência das cotações |
+| measured from | PoP | round-trip | quotes surviving transit |
 |---|---|---|---|
 | São Paulo | GRU | 164ms | ~57% |
 | DigitalOcean SFO3 | SJC | 148ms | ~59% |
@@ -48,131 +49,135 @@ triangular com cinco droplets descartáveis, medindo só endpoints dinâmicos
 | DigitalOcean AMS3 | AMS | 20ms | ~92% |
 | **DigitalOcean LON1** | **LHR** | **15ms** | **~93%** |
 
-San Jose ser 67ms pior que Newark — a largura dos EUA — prova que a origem está
-a leste. E 78ms a leste de Newark não é a Virgínia (~5ms), é o Atlântico.
-Amsterdam fecha a conta: **o CLOB do Polymarket roda na Irlanda.**
+San Jose being 67ms worse than Newark — the width of the United States — proves
+the origin lies east. And 78ms east of Newark is not Virginia (~5ms), it is the
+Atlantic. Amsterdam closes the argument: **Polymarket's CLOB runs in Ireland.**
 
-Custo da descoberta: cerca de US$ 0,20 em droplets cobradas por hora.
+Cost of the discovery: roughly US$ 0.20 in hourly-billed droplets.
 
 ---
 
-## O dataset
+## The dataset
 
-18,4 dias de livro de ofertas de prediction market, tick a tick. Dado granular
-desse tipo é escasso — foi a única coisa deste projeto que nunca deu resultado
-negativo.
+18.4 days of prediction-market order book, tick by tick. Granular data of this
+kind is scarce — public APIs expose aggregated prices, not how the book evolves.
 
-| tabela | linhas | conteúdo |
+| table | rows | contents |
 |---|---|---|
-| `book_top` | **15.997.072** | topo de livro a cada mudança: bid, ask, tamanhos, spread |
-| `book_events` | 1.811.141 | payload cru do WebSocket, para reprocessar |
-| `wallet_trades` | 453.466 | trades públicos das 30 maiores carteiras, com o atraso de visão medido |
-| `markets` | 14.778 | catálogo: taxas, resolução, estrutura negative-risk |
-| `paper_fills` | 29.826 | execuções simuladas, com rebate e taxa por linha |
+| `book_top` | **15,997,072** | top of book on every change: bid, ask, sizes, spread |
+| `book_events` | 1,811,141 | raw WebSocket payload, for reprocessing from scratch |
+| `wallet_trades` | 453,466 | public trades of the top 30 wallets, with observation delay measured |
+| `markets` | 14,778 | catalogue: fees, resolution dates, negative-risk structure |
+| `paper_fills` | 29,826 | simulated fills, with rebate and fee per row |
 
-**77.985 tokens · 441,9 horas contínuas · 421 MB em Parquet** (de 3,88 GB em
-DuckDB).
+**77,985 tokens · 441.9 continuous hours · 421 MB in Parquet** (down from 3.88 GB
+in DuckDB).
 
-### Baixar
+### Download
 
-Os arquivos estão na [**Release `v1.0-dataset`**](https://github.com/AdrielCunha/market-microstructure-lab/releases/tag/v1.0-dataset) —
-separados de propósito, para não obrigar a baixar 421 MB quem só quer o livro:
+Files live in the [**`v1.0-dataset` release**](https://github.com/AdrielCunha/market-microstructure-lab/releases/tag/v1.0-dataset) —
+kept separate on purpose, so nobody has to pull 421 MB just to get the book:
 
 ```bash
-# só o livro de ofertas (123 MB) — é o que interessa a quase todo mundo
+# the order book alone (123 MB) — what most people actually want
 curl -LO https://github.com/AdrielCunha/market-microstructure-lab/releases/download/v1.0-dataset/book_top.parquet
 ```
 
 ```python
 import duckdb
 duckdb.sql("SELECT count(*), count(DISTINCT token_id) FROM 'book_top.parquet'")
-# 15.997.072 linhas, 77.985 tokens
+# 15,997,072 rows, 77,985 tokens
 ```
 
-Esquema completo e armadilhas de interpretação em [DATASET.md](DATASET.md).
+Full schema and interpretation caveats in [DATASET.md](DATASET.md).
 
 ---
 
-## O que torna isto um instrumento, e não uma planilha otimista
+## What makes this an instrument rather than an optimistic spreadsheet
 
-Um simulador que dá lucro em qualquer estratégia não vale nada. A maior parte do
-esforço foi impedir o sistema de mentir a favor. **23 defeitos estão
-documentados em [CONTEXT.md](CONTEXT.md)**, com o motivo de cada um — e quase
-todos são da mesma família: *resultado bom demais escondendo o custo dominante*.
+A simulator that turns a profit on any strategy is worthless. Most of the effort
+went into stopping the system from lying in its own favour. **23 defects are
+documented in [CONTEXT.md](CONTEXT.md)** with the reasoning behind each — and
+nearly all belong to one family: *a result too good, hiding the dominant cost.*
 
-Alguns:
+A few:
 
-- **Um veredito de aprovação recusado.** Market making ia passar no Gate 0 com
-  200x de folga sobre o custo — folga que ignorava seleção adversa. Foi criado
-  um terceiro estado, `INCONCLUSIVO`, que por construção nunca devolve `PASS`.
-- **Latência medida em endpoint cacheado** deu 50ms; o caminho real dava 164ms.
-  O script agora **se recusa a reportar** se o Cloudflare disser `HIT`.
-- **A própria verificação mentiu**: reportou *3.198 lacunas de 2 minutos numa
-  janela de 225 minutos* — aritmeticamente impossível. Alarme falso é pior que
-  nenhuma verificação: treina quem lê a ignorar o vermelho.
-- **Vender a descoberto era de graça** na trava de capital: a simulação saiu com
-  6.995 cotas vendidas contra 917 compradas, uma carteira impossível de montar.
-- **Lucro de papel virava poder de fogo**, numa realimentação que produziu
-  "$35.309 de lucro sobre $1.000" em 3 horas.
+- **A passing verdict, refused.** Market making was about to clear Gate 0 with
+  200x headroom over cost — headroom that ignored adverse selection. A third
+  state, `INCONCLUSIVE`, was introduced; by construction it can never return
+  `PASS`.
+- **Latency measured against a cached endpoint** reported 50ms; the real path was
+  164ms. The script now **refuses to report** if Cloudflare says `HIT`.
+- **The integrity check itself lied**, reporting *3,198 two-minute gaps inside a
+  225-minute window* — arithmetically impossible. A false alarm is worse than no
+  check: it trains the reader to ignore red.
+- **Selling short was free** in the capital guard: the simulation ended up with
+  6,995 shares sold against 917 bought — a book that could never have been
+  opened with the stated capital.
+- **Paper profit became buying power**, a feedback loop that produced
+  "$35,309 of profit on $1,000" in three hours.
 
-**142 testes** travam essas classes de erro para que não voltem.
-
----
-
-## Arquitetura
-
-```
-collector/   WebSocket do CLOB (400 tokens simultâneos), catálogo, carteiras
-engine/      simulador de market making: latência, fila, estoque, liquidação
-analysis/    spreads, negative-risk, copyability, nichos, markout, latência
-reports/     painéis HTTP servidos pelo próprio coletor
-```
-
-Decisões não óbvias, todas motivadas por falha real em produção:
-
-- **Processo único.** O DuckDB trava o arquivo num escritor só — os painéis
-  rodam dentro do coletor, sobre uma conexão de leitura com lock explícito.
-- **Latência como matriz.** `latencias_ms = [0, 15, 170]` roda seis motores
-  sobre o **mesmo tick de mercado**. Comparação pareada: o regime de mercado
-  cancela, sobra só o efeito da distância.
-- **Duas regras de execução em paralelo.** `cruzamento` conta execuções demais
-  (o livro também se move por cancelamento), `negocio` conta de menos (o feed
-  publica ~9 negócios para cada ~1.300 mudanças de preço). A verdade fica no
-  meio, e a de baixo é a que decide.
-- **Watchdog + `restart: unless-stopped`.** Congelar em silêncio numa coleta de
-  dias é pior que cair. O watchdog transforma travamento em saída visível; o
-  Docker reergue; o livro-caixa é reconstruído de `paper_fills`.
-- **Janela de análise.** Com 3,9 GB acumulados, consulta sem limite estourava a
-  memória do container e o kernel matava o processo. O DuckDB não enxerga
-  cgroup: lê a RAM da máquina e se dá 80% dela.
+**142 tests** lock these classes of error so they cannot return.
 
 ---
 
-## Rodando
+## Architecture
+
+```
+collector/   CLOB WebSocket (400 tokens live), catalogue, wallet polling
+engine/      market-making simulator: latency, queue, inventory, settlement
+analysis/    spreads, negative-risk, copyability, niches, markout, latency
+reports/     HTTP dashboards served by the collector process itself
+```
+
+Non-obvious decisions, each driven by an actual production failure:
+
+- **Single process.** DuckDB locks the file to one writer — dashboards run inside
+  the collector, over a read cursor guarded by an explicit lock.
+- **Latency as a matrix.** `latencias_ms = [0, 15, 170]` runs six engines over
+  the **same market tick**. A paired comparison: market regime cancels out and
+  only the effect of distance remains.
+- **Two fill rules in parallel.** `cruzamento` overcounts fills (the book also
+  moves on cancellation), `negocio` undercounts (the feed prints ~9 trades per
+  ~1,300 price changes). Truth sits between them, and the conservative one
+  decides.
+- **Watchdog + `restart: unless-stopped`.** Freezing silently during a multi-day
+  collection is worse than crashing. The watchdog turns a freeze into a visible
+  exit; Docker brings it back; the ledger is rebuilt from `paper_fills`.
+- **Bounded analysis window.** At 3.9 GB, unbounded queries blew past the
+  container memory limit and the kernel killed the process. DuckDB does not see
+  cgroups: it reads host RAM and grants itself 80% of it.
+
+---
+
+## Running it
 
 ```bash
 pip install -r requirements.txt
 
-python -m collector.run          # coleta (Ctrl+C para parar)
-python -m reports.verify         # os dados prestam?
-python -m reports.gate0          # o veredito
-python -m analysis.latencia      # onde esta máquina está na escada
-python -m pytest tests -q        # 142 testes
+python -m collector.run          # collect (Ctrl+C to stop)
+python -m reports.verify         # is the data trustworthy?
+python -m reports.gate0          # the verdict
+python -m analysis.latencia      # where this machine sits on the ladder
+python -m pytest tests -q        # 142 tests
 ```
 
-Painel em `http://127.0.0.1:8787` — coleta, carteira, ordem a ordem, markout,
-nichos.
+Dashboard at `http://127.0.0.1:8787` — collection health, wallet, fill-by-fill,
+markout, niches.
 
-Com Docker: `docker compose up -d --build`. O painel fica preso em `127.0.0.1`
-de propósito — não tem autenticação.
+With Docker: `docker compose up -d --build`. The dashboard is bound to
+`127.0.0.1` deliberately — it has no authentication.
+
+> `CONTEXT.md` is the working log, kept in Portuguese. It holds the full decision
+> history, every measurement, and all 23 defects with their reasoning.
 
 ---
 
-## O que eu levo daqui
+## What I take away
 
-O plano dizia, antes de qualquer linha de código: *"se não passar, o projeto
-para aqui. Isso é sucesso, não fracasso: custou tempo, não dinheiro, e a
-resposta é definitiva."*
+The plan said this before a single line was written: *"if it doesn't pass, the
+project stops here. That is success, not failure: it cost time, not money, and
+the answer is definitive."*
 
-Foi o que aconteceu. A parte difícil não foi construir o coletor — foi construir
-um instrumento disposto a dizer **não**, e depois acreditar nele.
+That is what happened. The hard part was never building the collector — it was
+building an instrument willing to say **no**, and then believing it.
