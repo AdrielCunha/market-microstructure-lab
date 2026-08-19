@@ -16,6 +16,16 @@ do melhor bid/ask** de 77.985 tokens.
 | Tamanho | 421 MB (de 3,88 GB em DuckDB) |
 | Licença | livre para uso, sem garantia |
 
+## Baixar
+
+[Release `v1.0-dataset`](https://github.com/AdrielCunha/market-microstructure-lab/releases/tag/v1.0-dataset)
+
+```bash
+curl -LO https://github.com/AdrielCunha/market-microstructure-lab/releases/download/v1.0-dataset/book_top.parquet        # 123 MB — o livro de ofertas
+curl -LO https://github.com/AdrielCunha/market-microstructure-lab/releases/download/v1.0-dataset/wallet_trades.parquet   #  41 MB — trades das carteiras vigiadas
+curl -LO https://github.com/AdrielCunha/market-microstructure-lab/releases/download/v1.0-dataset/markets.parquet         # 1,2 MB — catalogo, taxas, resolucao
+```
+
 ## Como usar
 
 ```python

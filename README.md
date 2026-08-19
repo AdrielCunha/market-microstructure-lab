@@ -71,7 +71,25 @@ negativo.
 | `paper_fills` | 29.826 | execuções simuladas, com rebate e taxa por linha |
 
 **77.985 tokens · 441,9 horas contínuas · 421 MB em Parquet** (de 3,88 GB em
-DuckDB). Ver [DATASET.md](DATASET.md).
+DuckDB).
+
+### Baixar
+
+Os arquivos estão na [**Release `v1.0-dataset`**](https://github.com/AdrielCunha/market-microstructure-lab/releases/tag/v1.0-dataset) —
+separados de propósito, para não obrigar a baixar 421 MB quem só quer o livro:
+
+```bash
+# só o livro de ofertas (123 MB) — é o que interessa a quase todo mundo
+curl -LO https://github.com/AdrielCunha/market-microstructure-lab/releases/download/v1.0-dataset/book_top.parquet
+```
+
+```python
+import duckdb
+duckdb.sql("SELECT count(*), count(DISTINCT token_id) FROM 'book_top.parquet'")
+# 15.997.072 linhas, 77.985 tokens
+```
+
+Esquema completo e armadilhas de interpretação em [DATASET.md](DATASET.md).
 
 ---
 
